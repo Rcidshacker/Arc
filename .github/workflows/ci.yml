@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Smoke tests (no ML)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install test dependencies
+        run: pip install -r requirements-test.txt
+
+      - name: Run smoke tests
+        run: pytest tests/ -m "not ml" --cov=server --cov-report=term-missing
+        env:
+          # Minimal env so main.py module-level reads don't fail.
+          # conftest.py overrides these with tmp paths before imports.
+          OBSIDIAN_VAULT_PATH: /tmp/arc_vault
+          OBSIDIAN_MEETINGS_SUBFOLDER: Meetings
+          ARC_INTAKE_DIR: /tmp/arc_intake
+          ARC_TEMP_DIR: /tmp/arc_temp
+          ARC_DB_PATH: /tmp/arc.db
+          ARC_SERVER_PORT: "8001"
+          WHISPER_MODEL: tiny
+          WHISPER_DEVICE: cpu
+          OLLAMA_MODEL: gemma3:4b
+          OLLAMA_HOST: http://localhost:11434
+          HF_TOKEN: ci-placeholder

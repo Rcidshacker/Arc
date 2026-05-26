@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}{{ meeting.filename }} — Arc{% endblock %}
+
+{% block content %}
+<div class="container page">
+
+  <!-- ─── Back ─────────────────────────────────────────────────────────── -->
+  <a href="/" class="back-link">Dashboard</a>
+
+  <!-- ─── Meeting header ───────────────────────────────────────────────── -->
+  <div class="page-header" style="align-items: flex-start;">
+    <div>
+      <h1 class="page-title" style="word-break: break-all;">{{ meeting.filename }}</h1>
+      <p class="page-subtitle">Meeting transcript</p>
+    </div>
+
+    {% if meeting.obsidian_note_path %}
+    <div>
+      <button
+        id="delete-audio-btn"
+        class="btn btn-danger btn-sm"
+        data-meeting-id="{{ meeting.id }}"
+        title="Remove the raw audio file — the transcript and note are kept."
+      >
+        Delete audio
+      </button>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ─── Meta row ─────────────────────────────────────────────────────── -->
+  <div class="meeting-meta">
+    <div class="meta-item">
+      <span class="meta-label">Recorded</span>
+      <span class="meta-value" id="meeting-date">
+        {% if meeting.upload_time %}{{ meeting.upload_time }}{% else %}—{% endif %}
+      </span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Duration</span>
+      <span class="meta-value">
+        {% if meeting.duration_seconds %}
+          {% set mins = (meeting.duration_seconds // 60) | int %}
+          {% set secs = (meeting.duration_seconds % 60) | int %}
+          {{ mins }}m {{ "%02d" | format(secs) }}s
+        {% else %}
+          —
+        {% endif %}
+      </span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Speakers</span>
+      <span class="meta-value">{{ speakers | length }}</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Segments</span>
+      <span class="meta-value">{{ segments | length }}</span>
+    </div>
+    {% if meeting.obsidian_note_path %}
+    <div class="meta-item">
+      <span class="meta-label">Obsidian note</span>
+      <span class="meta-value" style="font-size:12px; color: var(--text-secondary); word-break: break-all;">
+        {{ meeting.obsidian_note_path }}
+      </span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ─── Speaker summary ──────────────────────────────────────────────── -->
+  {% if speakers %}
+  <p class="section-label" style="margin-bottom: 12px;">Speakers</p>
+  <div class="speaker-summary" aria-label="Speaker breakdown">
+    {% set total_seconds = speakers | sum(attribute='total_speaking_seconds') %}
+    {% for speaker in speakers %}
+    {% set idx = loop.index0 %}
+    {% set speaker_colors = ['--speaker-0','--speaker-1','--speaker-2','--speaker-3','--speaker-4','--speaker-5'] %}
+    {% set color_var = speaker_colors[idx % 6] %}
+    {% set pct = ((speaker.total_speaking_seconds / total_seconds * 100) | round(1)) if total_seconds > 0 else 0 %}
+    <div class="speaker-chip">
+      <span class="speaker-chip-dot" style="background: var({{ color_var }});"></span>
+      <span class="speaker-chip-name">{{ speaker.name }}</span>
+      <span class="speaker-chip-pct">{{ pct }}%</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="divider"></div>
+
+  <!-- ─── Transcript ───────────────────────────────────────────────────── -->
+  {% if segments %}
+  <p class="section-label" style="margin-bottom: 14px;">Full transcript</p>
+  <div class="card" style="padding: 20px 24px;">
+    <div class="transcript-view" role="log" aria-label="Meeting transcript">
+      {% for segment in segments %}
+
+        {# Determine speaker index for color assignment #}
+        {% set ns = namespace(color_var='--speaker-0') %}
+        {% for spk in speakers %}
+          {% if spk.name == segment.speaker_name %}
+            {% set ns.color_var = ['--speaker-0','--speaker-1','--speaker-2','--speaker-3','--speaker-4','--speaker-5'][loop.index0 % 6] %}
+          {% endif %}
+        {% endfor %}
+
+        {# Fallback: if still default and speaker is unknown, cycle by segment loop index #}
+        {% set known_names = speakers | map(attribute='name') | list %}
+        {% if segment.speaker_name not in known_names %}
+          {% set ns.color_var = ['--speaker-0','--speaker-1','--speaker-2','--speaker-3','--speaker-4','--speaker-5'][loop.index0 % 6] %}
+        {% endif %}
+
+        {# Format timestamp #}
+        {% set ts_mins = (segment.start_seconds // 60) | int %}
+        {% set ts_secs = (segment.start_seconds % 60) | int %}
+
+        <div class="segment">
+          <div class="segment-meta">
+            <span class="segment-speaker" style="color: var({{ ns.color_var }});">
+              {{ segment.speaker_name or 'Unknown' }}
+            </span>
+            <span class="segment-timestamp">
+              {{ "%02d" | format(ts_mins) }}:{{ "%02d" | format(ts_secs) }}
+            </span>
+          </div>
+          <span class="segment-text">{{ segment.text }}</span>
+        </div>
+
+      {% endfor %}
+    </div>
+  </div>
+
+  {% else %}
+  <div class="card">
+    <div class="empty-state">
+      <p>No transcript segments available yet.</p>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  /* ── Format date ─────────────────────────────────────────────────────── */
+  var dateEl = document.getElementById('meeting-date');
+  if (dateEl) {
+    var raw = dateEl.textContent.trim();
+    if (raw && raw !== '—') {
+      try {
+        var d = new Date(raw);
+        dateEl.textContent =
+          d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) +
+          ' at ' +
+          d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      } catch (e) {}
+    }
+  }
+
+  /* ── Delete audio button ─────────────────────────────────────────────── */
+  var deleteBtn = document.getElementById('delete-audio-btn');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', function () {
+      var meetingId = deleteBtn.getAttribute('data-meeting-id');
+      var confirmed = window.confirm(
+        'Delete the raw audio file for this meeting?\n\n' +
+        'The transcript and Obsidian note will be kept. ' +
+        'This cannot be undone.'
+      );
+      if (!confirmed) return;
+
+      deleteBtn.disabled = true;
+      deleteBtn.textContent = 'Deleting…';
+
+      fetch('/meeting/' + meetingId + '/audio', { method: 'DELETE' })
+        .then(function (res) {
+          if (res.ok) {
+            deleteBtn.textContent = 'Deleted';
+            deleteBtn.style.opacity = '0.5';
+          } else {
+            return res.json().then(function (body) {
+              throw new Error(body.detail || 'Delete failed');
+            });
+          }
+        })
+        .catch(function (err) {
+          deleteBtn.disabled = false;
+          deleteBtn.textContent = 'Delete audio';
+          alert('Could not delete audio: ' + err.message);
+        });
+    });
+  }
+
+})();
+</script>
+{% endblock %}

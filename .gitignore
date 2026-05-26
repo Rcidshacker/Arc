@@ -1,0 +1,48 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Databases (SQLite and WAL files)
+*.db
+*.db-shm
+*.db-wal
+
+# Project-specific local directories
+intake/*
+!intake/.gitkeep
+temp/*
+!temp/.gitkeep
+clips/*
+!clips/.gitkeep
+server/static/qr.png
+
+# Node & Mobile
+node_modules/
+mobile/node_modules/
+mobile/.expo/
+mobile/android/
+mobile/ios/
+mobile/bin/
+.expo/
+*.apk
+*.aab
+
+# OS files
+.DS_Store
+Thumbs.db

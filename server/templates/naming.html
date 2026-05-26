@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Name speakers — Arc{% endblock %}
+
+{% block content %}
+<div class="container page">
+
+  <!-- ─── Back ─────────────────────────────────────────────────────────── -->
+  <a href="/" class="back-link">Dashboard</a>
+
+  <!-- ─── Header ───────────────────────────────────────────────────────── -->
+  <div class="naming-intro">
+    <h1 class="page-title">Name the speakers</h1>
+    <p style="margin-top: 6px; font-size: 14px; color: var(--text-secondary); word-break: break-all;">
+      {{ meeting.filename }}
+    </p>
+    <p style="margin-top: 12px; font-size: 14px; color: var(--text-secondary);">
+      Listen to each clip. Accept the suggested name or type a new one. Each name will be remembered for future meetings.
+    </p>
+  </div>
+
+  <!-- ─── Form ─────────────────────────────────────────────────────────── -->
+  {% if unknown_labels %}
+  <form method="POST" action="/speaker/name" id="naming-form">
+    <input type="hidden" name="meeting_id" value="{{ meeting.id }}" />
+
+    <p class="section-label" style="margin-bottom: 16px;">Unknown speakers</p>
+
+    <div class="speaker-cards">
+      {% for label in unknown_labels %}
+      {% set sp_num = loop.index %}
+      {% set suggested = label_suggestions.get(label) %}
+      <div class="speaker-card card-glowing">
+
+        <!-- Label column -->
+        <div>
+          <div class="speaker-card-label">
+            Speaker {{ sp_num }}
+            <span>{{ label }}</span>
+          </div>
+        </div>
+
+        <!-- Audio clip column -->
+        <div>
+          <audio
+            controls
+            preload="none"
+            src="/clip/{{ meeting.id }}/{{ label }}"
+            aria-label="Audio clip for {{ label }}"
+          ></audio>
+        </div>
+
+        <!-- Name input column -->
+        <div class="speaker-card-input-wrap">
+          <label
+            class="speaker-card-input-label"
+            for="name_{{ label }}"
+          >
+            Name
+            {% if suggested %}
+              <span style="color: var(--accent-bright); font-weight: 500;">— AI suggested</span>
+            {% endif %}
+          </label>
+          <input
+            type="text"
+            id="name_{{ label }}"
+            name="name_{{ label }}"
+            {% if suggested %}
+              value="{{ suggested }}"
+            {% endif %}
+            placeholder="Enter speaker name"
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+        </div>
+
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Submit -->
+    <div style="display: flex; align-items: center; gap: 16px; margin-top: 8px;">
+      <button type="submit" class="btn btn-primary" id="submit-btn">
+        Save Names &amp; Resume Pipeline
+      </button>
+      <p class="naming-note" style="border: none; padding: 0; margin: 0;">
+        Names are saved globally and matched in future meetings.
+      </p>
+    </div>
+  </form>
+
+  {% else %}
+  <div class="card">
+    <div class="empty-state">
+      <p>No unknown speakers found for this meeting.</p>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  var form      = document.getElementById('naming-form');
+  var submitBtn = document.getElementById('submit-btn');
+
+  if (!form || !submitBtn) return;
+
+  form.addEventListener('submit', function () {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+  });
+
+  /* Prevent accidentally submitting with an empty name */
+  form.addEventListener('submit', function (e) {
+    var inputs = form.querySelectorAll('input[type="text"]');
+    var allFilled = true;
+    inputs.forEach(function (inp) {
+      if (!inp.value.trim()) allFilled = false;
+    });
+    if (!allFilled) {
+      e.preventDefault();
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save Names & Resume Pipeline';
+      alert('Please enter a name for every speaker before submitting.');
+    }
+  });
+
+})();
+</script>
+{% endblock %}

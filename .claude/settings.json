@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git status)",
+      "Bash(git add*)",
+      "Bash(gh issue*)",
+      "Bash(gh pr*)",
+      "Bash(pytest*)",
+      "Bash(ruff*)",
+      "Bash(python server/watcher.py)",
+      "Bash(uvicorn server.main:app*)",
+      "Bash(python -c*)",
+      "Bash(ffmpeg -version)",
+      "Bash(curl http://localhost:11434*)",
+      "Bash(npx jest*)",
+      "Bash(npx eslint*)",
+      "Bash(nvidia-smi)",
+      "Bash(find .claude -type f*)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.local)",
+      "Bash(rm -rf*)",
+      "Bash(git push --force*)",
+      "Bash(git reset --hard*)",
+      "Bash(curl * | bash)",
+      "Bash(pip install*)",
+      "Bash(npm install*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git commit*)",
+        "hooks": [{ "type": "command", "command": "bash .claude/hooks/pre-commit.sh" }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": "bash .claude/hooks/lint-on-save.sh \"$CLAUDE_TOOL_OUTPUT_FILE\"" }]
+      }
+    ]
+  },
+  "model": "claude-sonnet-4-6",
+  "autoMemoryEnabled": true
+}

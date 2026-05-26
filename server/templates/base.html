@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Arc{% endblock %}</title>
+
+  <!-- Fonts: Syne (display) + DM Sans (body) + IBM Plex Mono (code/transcript) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="/static/styles.css" />
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+  <!-- Circuit texture overlay — rendered via CSS pseudo-elements on html -->
+
+  <!-- ─── Site Header ──────────────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="container">
+
+      <a href="/" class="wordmark" aria-label="Arc — home">
+        <span class="wordmark-bracket">[</span>Arc<span class="wordmark-bracket">]</span>
+      </a>
+
+      <nav class="site-nav" aria-label="Main navigation">
+        <a href="/"
+          {% if request.url.path == '/' %}class="active"{% endif %}
+        >
+          <span class="nav-icon">◈</span> Dashboard
+        </a>
+        <a href="/qr"
+          {% if request.url.path == '/qr' %}class="active"{% endif %}
+        >
+          <span class="nav-icon">⊞</span> QR Pair
+        </a>
+      </nav>
+
+    </div>
+  </header>
+
+  <!-- ─── Page Content ─────────────────────────────────────────────────── -->
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

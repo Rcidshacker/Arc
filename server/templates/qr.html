@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}QR Code — Arc{% endblock %}
+
+{% block content %}
+<div class="qr-wrap">
+
+  <img
+    src="/static/arc-logo.png"
+    alt="Arc logo"
+    class="qr-logo"
+  />
+
+  <h1 class="page-title" style="font-family: var(--font-display); letter-spacing: -0.5px;">Scan to pair</h1>
+  <p class="qr-label" style="margin-top: -12px;">Point your phone camera at this code to open Arc on your device</p>
+
+  <div class="qr-img-wrap">
+    <img
+      src="/static/qr.png"
+      alt="QR code pointing to {{ server_url }}"
+      class="qr-img"
+      width="220"
+      height="220"
+    />
+  </div>
+
+  <p class="qr-url">{{ server_url }}</p>
+
+</div>
+{% endblock %}

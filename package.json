@@ -1,0 +1,10 @@
+{
+  "name": "arc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first personal meeting intelligence",
+  "scripts": {
+    "test": "pytest tests/ -m \"not ml\" --tb=short",
+    "test:ci": "pytest tests/ -m \"not ml\" --cov=server --cov-report=term-missing"
+  }
+}

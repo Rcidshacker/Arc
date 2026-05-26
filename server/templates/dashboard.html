@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — Arc{% endblock %}
+
+{% block content %}
+<div class="container page">
+
+  <!-- ─── Upload Section ───────────────────────────────────────────────── -->
+  <section class="upload-section" aria-label="Upload audio file">
+    <p class="section-label" style="margin-bottom: 16px;">New recording</p>
+    <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Upload audio file">
+
+      <!-- Hidden real file input -->
+      <input
+        type="file"
+        id="file-input"
+        class="file-input"
+        accept=".m4a,.mp3,.mp4,.webm,.wav,.ogg,.opus,.flac"
+        aria-label="Choose audio file"
+      />
+
+      <!-- Icon -->
+      <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 16v-8M8 12l4-4 4 4"/>
+        <path d="M20 16.5A4.5 4.5 0 0 0 15.5 12H14a6 6 0 1 0-5.73 7.5"/>
+      </svg>
+
+      <p class="dropzone-label">Drop audio here or click to browse</p>
+      <p class="dropzone-hint">
+        Accepted:
+        <span>.m4a .mp3 .mp4 .webm .wav .ogg .opus .flac</span>
+      </p>
+    </div>
+
+    <!-- Progress -->
+    <div class="upload-progress" id="upload-progress">
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+      </div>
+      <p class="progress-label" id="progress-label">Uploading…</p>
+    </div>
+
+    <!-- Inline error -->
+    <div class="upload-error" id="upload-error" role="alert"></div>
+  </section>
+
+  <!-- ─── Meetings List ─────────────────────────────────────────────────── -->
+  <section aria-label="Meetings">
+    <div class="page-header">
+      <div>
+        <p class="section-label">All meetings</p>
+        <h1 class="page-title">Meetings</h1>
+      </div>
+    </div>
+
+    {% if meetings %}
+    <div class="card" style="padding: 0; overflow: hidden;">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="padding-left: 16px;">Filename</th>
+              <th>Date</th>
+              <th>Duration</th>
+              <th>Status</th>
+              <th style="text-align:right; padding-right: 16px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="meetings-tbody">
+            {% for meeting in meetings %}
+            <tr data-meeting-id="{{ meeting.id }}" data-status="{{ meeting.status }}">
+
+              <!-- Filename -->
+              <td class="td-filename" style="padding-left: 16px; max-width: 280px;">
+                {% if meeting.status == 'done' %}
+                  <a href="/meeting/{{ meeting.id }}" style="color: var(--text-primary); font-weight:500;">
+                    {{ meeting.filename }}
+                  </a>
+                {% else %}
+                  {{ meeting.filename }}
+                {% endif %}
+              </td>
+
+              <!-- Date -->
+              <td class="td-secondary">
+                <span data-upload-time="{{ meeting.upload_time }}">
+                  {{ meeting.upload_time }}
+                </span>
+              </td>
+
+              <!-- Duration -->
+              <td class="td-secondary">
+                {% if meeting.duration_seconds %}
+                  {% set mins = (meeting.duration_seconds // 60) | int %}
+                  {% set secs = (meeting.duration_seconds % 60) | int %}
+                  {{ mins }}m {{ "%02d" | format(secs) }}s
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+
+              <!-- Status -->
+              <td>
+                <span class="status-cell" data-id="{{ meeting.id }}">
+                  {% if meeting.status == 'uploaded' %}
+                    <span class="badge badge-uploaded">Uploaded</span>
+                  {% elif meeting.status == 'processing' %}
+                    <span class="badge badge-processing">
+                      <span class="pulse-dot" aria-hidden="true"></span>
+                      Processing…
+                    </span>
+                  {% elif meeting.status == 'needs_naming' %}
+                    <a href="/naming/{{ meeting.id }}" class="badge badge-needs-naming">
+                      Needs naming
+                    </a>
+                  {% elif meeting.status == 'done' %}
+                    <span class="badge badge-done">Done</span>
+                  {% elif meeting.status == 'error' %}
+                    <span
+                      class="badge badge-error"
+                      {% if meeting.error_message %}
+                        data-tooltip="{{ meeting.error_message }}"
+                        title="{{ meeting.error_message }}"
+                      {% endif %}
+                    >Error</span>
+                  {% else %}
+                    <span class="badge badge-uploaded">{{ meeting.status }}</span>
+                  {% endif %}
+                </span>
+              </td>
+
+              <!-- Actions -->
+              <td style="text-align: right; padding-right: 16px;">
+                {% if meeting.status == 'done' %}
+                  <a href="/meeting/{{ meeting.id }}" class="btn btn-sm">View</a>
+                {% elif meeting.status == 'needs_naming' %}
+                  <a href="/naming/{{ meeting.id }}" class="btn btn-sm" style="color: var(--warning); border-color: rgba(245,158,11,0.35);">Name</a>
+                {% else %}
+                  <span style="color: var(--text-secondary); font-size: 12px;">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {% else %}
+    <div class="card">
+      <div class="empty-state">
+        <p>No meetings yet. Upload an audio file to get started.</p>
+      </div>
+    </div>
+    {% endif %}
+
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  /* ── Helpers ─────────────────────────────────────────────────────────── */
+
+  function formatDuration(seconds) {
+    if (!seconds) return '—';
+    var m = Math.floor(seconds / 60);
+    var s = Math.floor(seconds % 60);
+    return m + 'm ' + String(s).padStart(2, '0') + 's';
+  }
+
+  function formatDate(isoString) {
+    if (!isoString) return '—';
+    try {
+      var d = new Date(isoString);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+             ', ' +
+             d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch (e) {
+      return isoString;
+    }
+  }
+
+  /* Format all upload-time cells on load */
+  document.querySelectorAll('[data-upload-time]').forEach(function (el) {
+    el.textContent = formatDate(el.getAttribute('data-upload-time'));
+  });
+
+  /* ── Status badge builder ─────────────────────────────────────────────── */
+
+  function buildBadge(id, status, errorMsg) {
+    if (status === 'uploaded') {
+      return '<span class="badge badge-uploaded">Uploaded</span>';
+    } else if (status === 'processing') {
+      return '<span class="badge badge-processing"><span class="pulse-dot" aria-hidden="true"></span>Processing…</span>';
+    } else if (status === 'needs_naming') {
+      return '<a href="/naming/' + id + '" class="badge badge-needs-naming">Needs naming</a>';
+    } else if (status === 'done') {
+      return '<span class="badge badge-done">Done</span>';
+    } else if (status === 'error') {
+      var tip = errorMsg ? ' data-tooltip="' + escapeAttr(errorMsg) + '" title="' + escapeAttr(errorMsg) + '"' : '';
+      return '<span class="badge badge-error"' + tip + '>Error</span>';
+    }
+    return '<span class="badge badge-uploaded">' + escapeHtml(status) + '</span>';
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function escapeAttr(s) {
+    return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /* ── Auto-refresh polling ─────────────────────────────────────────────── */
+
+  var POLL_INTERVAL = 5000;
+  var activePolls = {};   // id → true
+
+  function shouldPoll(status) {
+    return status === 'uploaded' || status === 'processing';
+  }
+
+  function pollMeeting(id) {
+    if (activePolls[id]) return;
+    activePolls[id] = true;
+
+    (function tick() {
+      fetch('/status/' + id)
+        .then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.json();
+        })
+        .then(function (data) {
+          var newStatus = data.status;
+          updateRow(id, newStatus, data.error_message, data.duration_seconds);
+
+          if (shouldPoll(newStatus)) {
+            setTimeout(tick, POLL_INTERVAL);
+          } else {
+            delete activePolls[id];
+            // If done, reload to get the filename link properly rendered
+            if (newStatus === 'done') {
+              setTimeout(function () { location.reload(); }, 800);
+            }
+          }
+        })
+        .catch(function () {
+          // Silently retry
+          setTimeout(tick, POLL_INTERVAL * 2);
+        });
+    })();
+  }
+
+  function updateRow(id, status, errorMsg, durationSeconds) {
+    var row = document.querySelector('tr[data-meeting-id="' + id + '"]');
+    if (!row) return;
+
+    row.setAttribute('data-status', status);
+
+    // Status cell
+    var statusCell = row.querySelector('.status-cell[data-id="' + id + '"]');
+    if (statusCell) {
+      statusCell.innerHTML = buildBadge(id, status, errorMsg);
+    }
+
+    // Duration cell (update if it was previously empty)
+    if (durationSeconds) {
+      var cells = row.querySelectorAll('td');
+      // duration is the 3rd td (index 2)
+      if (cells[2] && cells[2].textContent.trim() === '—') {
+        cells[2].textContent = formatDuration(durationSeconds);
+      }
+    }
+
+    // If now done, make filename a link
+    if (status === 'done') {
+      var filenameCell = row.cells[0];
+      if (filenameCell && !filenameCell.querySelector('a')) {
+        var text = filenameCell.textContent.trim();
+        filenameCell.innerHTML = '<a href="/meeting/' + id + '" style="color:var(--text-primary);font-weight:500;">' + escapeHtml(text) + '</a>';
+      }
+      // Update actions cell
+      var actionCell = row.cells[4];
+      if (actionCell) {
+        actionCell.innerHTML = '<a href="/meeting/' + id + '" class="btn btn-sm">View</a>';
+      }
+    }
+  }
+
+  /* Kick off polling for rows that need it */
+  document.querySelectorAll('tr[data-meeting-id]').forEach(function (row) {
+    var id     = row.getAttribute('data-meeting-id');
+    var status = row.getAttribute('data-status');
+    if (shouldPoll(status)) {
+      pollMeeting(id);
+    }
+  });
+
+  /* ── Upload handling ─────────────────────────────────────────────────── */
+
+  var dropzone     = document.getElementById('dropzone');
+  var fileInput    = document.getElementById('file-input');
+  var progressWrap = document.getElementById('upload-progress');
+  var progressFill = document.getElementById('progress-fill');
+  var progressLbl  = document.getElementById('progress-label');
+  var errorDiv     = document.getElementById('upload-error');
+
+  function showError(msg) {
+    errorDiv.textContent = msg;
+    errorDiv.classList.add('visible');
+    progressWrap.classList.remove('visible');
+  }
+
+  function hideError() {
+    errorDiv.classList.remove('visible');
+  }
+
+  function uploadFile(file) {
+    hideError();
+    progressFill.style.width = '0%';
+    progressLbl.textContent = 'Uploading…';
+    progressWrap.classList.add('visible');
+
+    var formData = new FormData();
+    formData.append('file', file);
+
+    var xhr = new XMLHttpRequest();
+
+    xhr.upload.onprogress = function (e) {
+      if (e.lengthComputable) {
+        var pct = Math.round((e.loaded / e.total) * 100);
+        progressFill.style.width = pct + '%';
+        progressLbl.textContent = 'Uploading… ' + pct + '%';
+      }
+    };
+
+    xhr.onload = function () {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        progressFill.style.width = '100%';
+        progressLbl.textContent = 'Upload complete. Refreshing…';
+        setTimeout(function () { location.reload(); }, 600);
+      } else {
+        var msg = 'Upload failed';
+        try {
+          var body = JSON.parse(xhr.responseText);
+          if (body.detail) msg = body.detail;
+        } catch (e) {}
+        showError(msg);
+        fileInput.value = '';
+      }
+    };
+
+    xhr.onerror = function () {
+      showError('Network error — check your connection and try again.');
+      fileInput.value = '';
+    };
+
+    xhr.open('POST', '/upload');
+    xhr.send(formData);
+  }
+
+  /* File input change */
+  fileInput.addEventListener('change', function () {
+    if (fileInput.files.length) {
+      uploadFile(fileInput.files[0]);
+    }
+  });
+
+  /* Keyboard accessibility for dropzone */
+  dropzone.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+
+  /* Drag-and-drop */
+  dropzone.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    dropzone.classList.add('dragover');
+  });
+
+  dropzone.addEventListener('dragleave', function (e) {
+    if (!dropzone.contains(e.relatedTarget)) {
+      dropzone.classList.remove('dragover');
+    }
+  });
+
+  dropzone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    var files = e.dataTransfer.files;
+    if (files.length) {
+      uploadFile(files[0]);
+    }
+  });
+
+  /* Prevent drag events on the whole page from opening browser file viewer */
+  document.addEventListener('dragover', function (e) { e.preventDefault(); });
+  document.addEventListener('drop', function (e) { e.preventDefault(); });
+
+})();
+</script>
+{% endblock %}

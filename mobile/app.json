@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Arc",
+    "slug": "arc",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "android": {
+      "package": "com.ruchit.arc",
+      "permissions": [
+        "RECORD_AUDIO",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MICROPHONE",
+        "POST_NOTIFICATIONS",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "WAKE_LOCK"
+      ]
+    },
+    "plugins": [
+      "expo-camera",
+      ["expo-av", {"microphonePermission": "Arc needs microphone access to record meetings."}]
+    ]
+  }
+}
