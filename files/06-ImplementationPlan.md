@@ -303,7 +303,7 @@ Do not build the naming UI (Phase 4) until Phase 3 spike passes. Everything down
 | 3 | pyannote.audio personal use licensing | Free for personal/non-commercial | Switch to speechbrain as replacement |
 | 4 | Cross-network access (different WiFi) | Phone hotspot fallback is sufficient | Set up Cloudflare Tunnel once — free, exposes localhost to public URL |
 | 5 | Codex CLI context via AGENTS.md | Full TRD + pipeline spec in AGENTS.md is sufficient for phase-by-phase builds | Break into per-phase AGENTS.md files, feed one at a time |
-| 6 | Obsidian vault path | `C:\Users\Lenovo\Desktop\Code\Obsidan Stronghold\MyBrain\Brain (ruchitdas36)` | Set via OBSIDIAN_VAULT_PATH in .env before first run |
+| 6 | Obsidian vault path | `C:\Users\Lenovo\Desktop\Code\Obsidan Stronghold\MyBrain\Arc_holder` | Set via OBSIDIAN_VAULT_PATH in .env before first run |
 
 ---
 

@@ -86,7 +86,7 @@
 
 ```env
 # Obsidian Vault
-OBSIDIAN_VAULT_PATH=C:\Users\Lenovo\Desktop\Code\Obsidan Stronghold\MyBrain\Brain (ruchitdas36)
+OBSIDIAN_VAULT_PATH=C:\Users\Lenovo\Desktop\Code\Obsidan Stronghold\MyBrain\Arc_holder
 OBSIDIAN_MEETINGS_SUBFOLDER=Meetings
 
 # Arc Directories

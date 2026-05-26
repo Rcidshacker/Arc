@@ -107,7 +107,7 @@ pip install -r requirements-test.txt
 ### 3. Environment Configuration
 Copy `.env.example` to `.env` and fill in the required parameters:
 ```env
-OBSIDIAN_VAULT_PATH=C:\Users\Lenovo\Desktop\Code\Obsidan Stronghold\MyBrain\Brain (ruchitdas36)
+OBSIDIAN_VAULT_PATH=C:\Users\Lenovo\Desktop\Code\Obsidan Stronghold\MyBrain\Arc_holder
 HF_TOKEN=hf_your_huggingface_access_token_here
 ```
 

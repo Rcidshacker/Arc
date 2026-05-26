@@ -34,7 +34,7 @@ Also required (cannot be automated):
 ## Environment Variables (`.env`)
 
 ```env
-OBSIDIAN_VAULT_PATH=C:\Users\Lenovo\Desktop\Code\Obsidan Stronghold\MyBrain\Brain (ruchitdas36)
+OBSIDIAN_VAULT_PATH=C:\Users\Lenovo\Desktop\Code\Obsidan Stronghold\MyBrain\Arc_holder
 OBSIDIAN_MEETINGS_SUBFOLDER=Meetings
 ARC_INTAKE_DIR=C:\Users\Lenovo\Desktop\arc\intake
 ARC_TEMP_DIR=C:\Users\Lenovo\Desktop\arc\temp
