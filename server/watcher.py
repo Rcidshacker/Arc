@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Optional
 
 from watchdog.events import FileCreatedEvent, FileSystemEventHandler
-from watchdog.observers import Observer
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -30,6 +29,44 @@ SETTLE_DELAY_SECONDS: float = 0.5
 # ---------------------------------------------------------------------------
 # Pipeline runner
 # ---------------------------------------------------------------------------
+
+def _run_note_and_vault(conn, meeting_id: str, db_path: Path) -> None:
+    """
+    Run only note_generator + vault_writer for a meeting whose segments are
+    already in the DB and all speakers are resolved. Used by the fast-path
+    skip when the pipeline resumes after speaker naming.
+    """
+    import os
+    import sqlite3
+
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    from database import update_meeting_status, update_meeting_temp_path
+
+    try:
+        print(f"[ARC] note_generator started (fast-path)", flush=True)
+        from pipeline.note_generator import generate_note  # type: ignore[import]
+
+        note_data = generate_note(conn, meeting_id)
+        print(f"[ARC] note_generator done", flush=True)
+
+        print(f"[ARC] vault_writer started (fast-path)", flush=True)
+        from pipeline.vault_writer import write_vault  # type: ignore[import]
+
+        vault_path = Path(os.environ["OBSIDIAN_VAULT_PATH"])
+        meetings_subfolder = os.environ.get("OBSIDIAN_MEETINGS_SUBFOLDER", "Meetings")
+        write_vault(conn, meeting_id, note_data, vault_path, meetings_subfolder)
+        print(f"[ARC] vault_writer done", flush=True)
+
+        update_meeting_status(conn, meeting_id, "done")
+        print(f"[ARC] pipeline DONE (fast-path) -> status=done", flush=True)
+
+    except Exception as exc:
+        error_msg = f"{type(exc).__name__}: {exc}"
+        print(f"[Arc watcher] ERROR in fast-path note+vault: {error_msg}", file=sys.stderr)
+        update_meeting_status(conn, meeting_id, "error", error_message=error_msg)
+
 
 def _run_pipeline(audio_path: Path, meeting_id: str, db_path: Path) -> None:
     """
@@ -59,35 +96,59 @@ def _run_pipeline(audio_path: Path, meeting_id: str, db_path: Path) -> None:
     conn = get_db(db_path)
 
     try:
+        row = conn.execute(
+            "SELECT status FROM meetings WHERE id = ?", (meeting_id,)
+        ).fetchone()
+        if row and row["status"] == "processing":
+            print(f"[Arc watcher] Skipping {audio_path.name}: already processing.")
+            return
+
         update_meeting_status(conn, meeting_id, "processing")
+
+        # Fast-path: if segments already exist and all speakers are resolved,
+        # the pipeline already completed steps 0–4. Jump straight to note_generator.
+        existing_segs = get_segments(conn, meeting_id)
+        unknown_labels_check = get_unknown_speaker_labels(conn, meeting_id)
+        if existing_segs and not unknown_labels_check:
+            print(f"[ARC] Fast-path: {len(existing_segs)} segments found, all speakers resolved — skipping to note_generator.", flush=True)
+            _run_note_and_vault(conn, meeting_id, db_path)
+            return
 
         # ------------------------------------------------------------------
         # Step 0: Normalise to 16kHz mono WAV
         # ------------------------------------------------------------------
+        print(f"[ARC] normalize started", flush=True)
         from pipeline.normalizer import normalize_audio  # type: ignore[import]
 
         wav_path: Path = normalize_audio(audio_path, temp_dir)
+        print(f"[ARC] normalize done -> {wav_path.name}", flush=True)
 
         # ------------------------------------------------------------------
         # Step 1: Transcribe with faster-whisper
         # ------------------------------------------------------------------
+        print(f"[ARC] transcribe started", flush=True)
         from pipeline.transcriber import transcribe  # type: ignore[import]
 
         segments = transcribe(wav_path)
+        print(f"[ARC] transcribe done -> {len(segments)} segments", flush=True)
 
         # ------------------------------------------------------------------
         # Step 2: Diarise with pyannote.audio
         # ------------------------------------------------------------------
+        print(f"[ARC] diarize started", flush=True)
         from pipeline.diarizer import diarize  # type: ignore[import]
 
         diarization = diarize(wav_path)
+        print(f"[ARC] diarize done -> {len(diarization)} turns", flush=True)
 
         # ------------------------------------------------------------------
         # Step 3: Align transcript segments with diarization turns
         # ------------------------------------------------------------------
+        print(f"[ARC] align started", flush=True)
         from pipeline.aligner import align_segments  # type: ignore[import]
 
         aligned = align_segments(segments, diarization)
+        print(f"[ARC] align done -> {len(aligned)} aligned segments", flush=True)
 
         # ------------------------------------------------------------------
         # Persist aligned segments to DB
@@ -107,40 +168,43 @@ def _run_pipeline(audio_path: Path, meeting_id: str, db_path: Path) -> None:
         # ------------------------------------------------------------------
         # Step 4: Match / embed speakers via resemblyzer
         # ------------------------------------------------------------------
+        print(f"[ARC] speaker_db started", flush=True)
         from pipeline.speaker_db import match_and_embed_speakers  # type: ignore[import]
 
         unknown_labels: list[str] = match_and_embed_speakers(
             conn, meeting_id, wav_path, aligned
         )
+        print(f"[ARC] speaker_db done -> {len(unknown_labels)} unknown labels", flush=True)
 
         # ------------------------------------------------------------------
-        # Step 5: If unknowns remain, infer names with Gemma then halt
+        # Step 5: If unknowns remain, halt for manual naming via web UI
         # ------------------------------------------------------------------
         if unknown_labels:
-            from pipeline.name_inferrer import infer_names  # type: ignore[import]
-
-            infer_names(conn, meeting_id, aligned, unknown_labels)
             update_meeting_status(conn, meeting_id, "needs_naming")
+            print(f"[ARC] needs_naming -> unknown labels: {unknown_labels}", flush=True)
             # Halt here — POST /speaker/name will reset status to "uploaded"
-            # which triggers the watcher again (or we re-enter via the
-            # duplicate-hash guard bypassed check in the watcher handler).
+            # which triggers the watcher again.
             return
 
         # ------------------------------------------------------------------
         # Step 6: Generate structured note data
         # ------------------------------------------------------------------
+        print(f"[ARC] note_generator started", flush=True)
         from pipeline.note_generator import generate_note  # type: ignore[import]
 
         note_data = generate_note(conn, meeting_id)
+        print(f"[ARC] note_generator done", flush=True)
 
         # ------------------------------------------------------------------
         # Step 7: Write to Obsidian vault
         # ------------------------------------------------------------------
+        print(f"[ARC] vault_writer started", flush=True)
         from pipeline.vault_writer import write_vault  # type: ignore[import]
 
         vault_path = Path(os.environ["OBSIDIAN_VAULT_PATH"])
         meetings_subfolder = os.environ.get("OBSIDIAN_MEETINGS_SUBFOLDER", "Meetings")
         write_vault(conn, meeting_id, note_data, vault_path, meetings_subfolder)
+        print(f"[ARC] vault_writer done", flush=True)
 
         # ------------------------------------------------------------------
         # Move the normalised WAV to temp/ and mark done
@@ -151,6 +215,7 @@ def _run_pipeline(audio_path: Path, meeting_id: str, db_path: Path) -> None:
 
         update_meeting_temp_path(conn, meeting_id, wav_path.name)
         update_meeting_status(conn, meeting_id, "done")
+        print(f"[ARC] pipeline DONE -> status=done", flush=True)
 
     except Exception as exc:
         error_msg = f"{type(exc).__name__}: {exc}"
@@ -264,20 +329,21 @@ def run_pipeline_for_meeting(meeting_id: str, audio_path: Path, db_path: Path) -
 
 def start_observer(intake_dir: Path, db_path: Path) -> None:
     """
-    Start a blocking watchdog Observer.
-    Intended to be run inside a daemon thread.
+    Poll intake_dir every 2 s for new audio files.
+    Pure-Python loop — avoids watchdog's BaseThread which breaks on Python 3.13.
     """
     event_handler = AudioFileHandler(db_path=db_path)
-    observer = Observer()
-    observer.schedule(event_handler, str(intake_dir), recursive=False)
-    observer.start()
-    print(f"[Arc watcher] Watching {intake_dir}")
-    try:
-        while True:
-            time.sleep(1)
-    except (KeyboardInterrupt, SystemExit):
-        observer.stop()
-    observer.join()
+    seen: set[Path] = set()
+    print(f"[Arc watcher] Watching {intake_dir} (polling, 2s interval)")
+    while True:
+        try:
+            for f in intake_dir.iterdir():
+                if f not in seen and f.suffix.lower() in AUDIO_EXTENSIONS:
+                    seen.add(f)
+                    event_handler.on_created(FileCreatedEvent(str(f)))
+        except Exception as exc:
+            print(f"[Arc watcher] poll error: {exc}")
+        time.sleep(2)
 
 
 # ---------------------------------------------------------------------------

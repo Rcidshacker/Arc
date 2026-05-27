@@ -119,8 +119,7 @@
                     <span
                       class="badge badge-error"
                       {% if meeting.error_message %}
-                        data-tooltip="{{ meeting.error_message }}"
-                        title="{{ meeting.error_message }}"
+                        title="{{ meeting.error_message.split('\n')[0][:160] }}"
                       {% endif %}
                     >Error</span>
                   {% else %}
@@ -201,7 +200,8 @@
     } else if (status === 'done') {
       return '<span class="badge badge-done">Done</span>';
     } else if (status === 'error') {
-      var tip = errorMsg ? ' data-tooltip="' + escapeAttr(errorMsg) + '" title="' + escapeAttr(errorMsg) + '"' : '';
+      var shortMsg = errorMsg ? String(errorMsg).split('\n')[0].slice(0, 160) : '';
+      var tip = shortMsg ? ' title="' + escapeAttr(shortMsg) + '"' : '';
       return '<span class="badge badge-error"' + tip + '>Error</span>';
     }
     return '<span class="badge badge-uploaded">' + escapeHtml(status) + '</span>';
@@ -234,7 +234,8 @@
           if (!res.ok) throw new Error('HTTP ' + res.status);
           return res.json();
         })
-        .then(function (data) {
+        .then(function (resObj) {
+          var data = resObj.data || {};
           var newStatus = data.status;
           updateRow(id, newStatus, data.error_message, data.duration_seconds);
 

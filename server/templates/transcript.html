@@ -71,16 +71,21 @@
   {% if speakers %}
   <p class="section-label" style="margin-bottom: 12px;">Speakers</p>
   <div class="speaker-summary" aria-label="Speaker breakdown">
-    {% set total_seconds = speakers | sum(attribute='total_speaking_seconds') %}
+    {# Compute total safely — total_speaking_seconds may be NULL #}
+    {% set ns = namespace(total=0) %}
+    {% for speaker in speakers %}
+      {% set ns.total = ns.total + (speaker.total_speaking_seconds | default(0) or 0) %}
+    {% endfor %}
     {% for speaker in speakers %}
     {% set idx = loop.index0 %}
     {% set speaker_colors = ['--speaker-0','--speaker-1','--speaker-2','--speaker-3','--speaker-4','--speaker-5'] %}
     {% set color_var = speaker_colors[idx % 6] %}
-    {% set pct = ((speaker.total_speaking_seconds / total_seconds * 100) | round(1)) if total_seconds > 0 else 0 %}
+    {% set spk_secs = speaker.total_speaking_seconds | default(0) or 0 %}
+    {% set pct = ((spk_secs / ns.total * 100) | round(1)) if ns.total > 0 else 0 %}
     <div class="speaker-chip">
       <span class="speaker-chip-dot" style="background: var({{ color_var }});"></span>
       <span class="speaker-chip-name">{{ speaker.name }}</span>
-      <span class="speaker-chip-pct">{{ pct }}%</span>
+      {% if ns.total > 0 %}<span class="speaker-chip-pct">{{ pct }}%</span>{% endif %}
     </div>
     {% endfor %}
   </div>
@@ -95,17 +100,16 @@
     <div class="transcript-view" role="log" aria-label="Meeting transcript">
       {% for segment in segments %}
 
-        {# Determine speaker index for color assignment #}
-        {% set ns = namespace(color_var='--speaker-0') %}
+        {# Determine speaker color by matching name from JOIN #}
+        {% set ns = namespace(color_var='--speaker-0', matched=false) %}
         {% for spk in speakers %}
           {% if spk.name == segment.speaker_name %}
             {% set ns.color_var = ['--speaker-0','--speaker-1','--speaker-2','--speaker-3','--speaker-4','--speaker-5'][loop.index0 % 6] %}
+            {% set ns.matched = true %}
           {% endif %}
         {% endfor %}
-
-        {# Fallback: if still default and speaker is unknown, cycle by segment loop index #}
-        {% set known_names = speakers | map(attribute='name') | list %}
-        {% if segment.speaker_name not in known_names %}
+        {# Unresolved label — cycle by loop index #}
+        {% if not ns.matched %}
           {% set ns.color_var = ['--speaker-0','--speaker-1','--speaker-2','--speaker-3','--speaker-4','--speaker-5'][loop.index0 % 6] %}
         {% endif %}
 
@@ -116,7 +120,7 @@
         <div class="segment">
           <div class="segment-meta">
             <span class="segment-speaker" style="color: var({{ ns.color_var }});">
-              {{ segment.speaker_name or 'Unknown' }}
+              {{ segment.speaker_name or segment.speaker_label or 'Unknown' }}
             </span>
             <span class="segment-timestamp">
               {{ "%02d" | format(ts_mins) }}:{{ "%02d" | format(ts_secs) }}

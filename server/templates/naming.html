@@ -102,21 +102,46 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Processing overlay -->
+<div id="processing-overlay" style="
+  display: none;
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(10, 10, 15, 0.88);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  text-align: center;
+  padding: 32px;
+">
+  <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true" id="proc-spinner" style="animation: spin 1s linear infinite;">
+    <circle cx="24" cy="24" r="20" stroke="rgba(255,255,255,0.12)" stroke-width="4"/>
+    <path d="M24 4a20 20 0 0 1 20 20" stroke="var(--accent-bright, #6ee7b7)" stroke-width="4" stroke-linecap="round"/>
+  </svg>
+  <div>
+    <p style="font-size: 18px; font-weight: 600; color: #fff; margin: 0 0 8px;">Processing your meeting…</p>
+    <p style="font-size: 14px; color: rgba(255,255,255,0.55); margin: 0; max-width: 320px; line-height: 1.5;">
+      Generating structured notes with Gemma. This takes 30–90 seconds.<br>
+      You'll be redirected to the dashboard — the status will update automatically.
+    </p>
+  </div>
+</div>
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
 <script>
 (function () {
   'use strict';
 
   var form      = document.getElementById('naming-form');
   var submitBtn = document.getElementById('submit-btn');
+  var overlay   = document.getElementById('processing-overlay');
 
   if (!form || !submitBtn) return;
 
-  form.addEventListener('submit', function () {
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Saving…';
-  });
-
-  /* Prevent accidentally submitting with an empty name */
   form.addEventListener('submit', function (e) {
     var inputs = form.querySelectorAll('input[type="text"]');
     var allFilled = true;
@@ -125,10 +150,13 @@
     });
     if (!allFilled) {
       e.preventDefault();
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Save Names & Resume Pipeline';
       alert('Please enter a name for every speaker before submitting.');
+      return;
     }
+    /* Show overlay — stays visible until browser navigates away on 303 */
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+    overlay.style.display = 'flex';
   });
 
 })();

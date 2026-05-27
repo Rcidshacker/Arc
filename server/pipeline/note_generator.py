@@ -1,9 +1,9 @@
 """
-Arc pipeline — Step 7: Structured note generation via Gemma (Ollama).
+Arc pipeline — Step 7: Structured note generation via Gemma 4 (llama-server).
 
 Reads all resolved transcript segments from the DB, sends a speaker-tagged
-transcript to Gemma, and returns a structured dict matching the Obsidian
-note schema.
+transcript to Gemma 4 via llama-server with thinking enabled, and returns
+a structured dict matching the Obsidian note schema.
 """
 
 from __future__ import annotations
@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 # Prompt templates
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are a meeting intelligence assistant. You receive a speaker-tagged \
+# <|think|> prefix activates extended reasoning in Gemma 4 via llama-server
+SYSTEM_PROMPT = """<|think|>
+You are a meeting intelligence assistant. You receive a speaker-tagged \
 transcript and return a structured JSON object. Return ONLY valid JSON. \
 No preamble. No explanation. No markdown fences.
 
@@ -102,16 +104,18 @@ def generate_note(conn: sqlite3.Connection, meeting_id: str) -> dict:
     )
 
     logger.info(
-        "Sending transcript to Ollama for note generation (%d segments, %d participants).",
+        "Sending transcript to llama-server for note generation (%d segments, %d participants).",
         len(segments),
         len(participants),
     )
 
     last_error: Exception | None = None
     for attempt in range(1, _MAX_RETRIES + 2):  # up to _MAX_RETRIES + 1 attempts total
-        raw = _call_ollama(user_msg)
+        raw = _call_llamacpp(user_msg)
+        logger.debug("Raw llama-server response (attempt %d):\n%s", attempt, raw)
+        stripped = _strip_thinking(raw)
         try:
-            note = _parse_json_response(raw)
+            note = _parse_json_response(stripped)
             logger.info("Note generation succeeded on attempt %d.", attempt)
             return note
         except ValueError as exc:
@@ -207,10 +211,37 @@ def _parse_meeting_date(upload_time: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Ollama
+# llama-server (OpenAI-compatible)
 # ---------------------------------------------------------------------------
 
-def _call_ollama(user_message: str) -> str:
+_LLAMACPP_MODEL: str | None = None
+
+
+def _get_model_name(host: str) -> str:
+    global _LLAMACPP_MODEL
+    if _LLAMACPP_MODEL is not None:
+        return _LLAMACPP_MODEL
+
+    import requests  # type: ignore[import]
+
+    try:
+        resp = requests.get(f"{host}/v1/models", timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        # Accept both /models (ollama-style) and OpenAI data[] format
+        models = data.get("data") or data.get("models") or []
+        if models:
+            _LLAMACPP_MODEL = models[0].get("id") or models[0].get("name") or "local"
+        else:
+            _LLAMACPP_MODEL = "local"
+    except Exception:
+        _LLAMACPP_MODEL = "local"
+
+    print(f"[ARC] llama-server model: {_LLAMACPP_MODEL}", flush=True)
+    return _LLAMACPP_MODEL
+
+
+def _call_llamacpp(user_message: str) -> str:
     try:
         import requests  # type: ignore[import]
     except ImportError as exc:
@@ -218,9 +249,9 @@ def _call_ollama(user_message: str) -> str:
             "requests is not installed. Run: pip install requests"
         ) from exc
 
-    ollama_host: str = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-    model: str = os.environ.get("OLLAMA_MODEL", "gemma3:4b")
-    url = f"{ollama_host.rstrip('/')}/api/chat"
+    host: str = os.environ.get("LLAMACPP_HOST", "http://localhost:8080")
+    model = _get_model_name(host)
+    url = f"{host}/v1/chat/completions"
 
     payload = {
         "model": model,
@@ -229,28 +260,35 @@ def _call_ollama(user_message: str) -> str:
             {"role": "user", "content": user_message},
         ],
         "stream": False,
-        "options": {
-            "temperature": 0.2,
-            "num_predict": 2048,
-        },
+        "temperature": 0.2,
+        "max_tokens": 2048,
     }
 
     try:
-        resp = requests.post(url, json=payload, timeout=120)
+        resp = requests.post(url, json=payload, timeout=180)
         resp.raise_for_status()
     except requests.exceptions.ConnectionError as exc:
         raise RuntimeError(
-            f"Ollama is not reachable at {ollama_host}. "
-            "Ensure Ollama is running and OLLAMA_HOST is correct."
+            f"llama-server is not reachable at {host}. "
+            "Ensure llama-server is running and LLAMACPP_HOST is correct."
         ) from exc
     except requests.exceptions.HTTPError as exc:
-        raise RuntimeError(f"Ollama HTTP error: {exc}") from exc
+        raise RuntimeError(f"llama-server HTTP error: {exc}") from exc
 
     data = resp.json()
     try:
-        return data["message"]["content"]
-    except (KeyError, TypeError) as exc:
-        raise RuntimeError(f"Unexpected Ollama response shape: {data}") from exc
+        return data["choices"][0]["message"]["content"]
+    except (KeyError, TypeError, IndexError) as exc:
+        raise RuntimeError(f"Unexpected llama-server response shape: {data}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Thinking token stripping
+# ---------------------------------------------------------------------------
+
+def _strip_thinking(text: str) -> str:
+    """Remove <|think|>...</|think|> reasoning blocks before JSON parsing."""
+    return re.sub(r"<\|think\|>.*?<\|/think\|>", "", text, flags=re.DOTALL).strip()
 
 
 # ---------------------------------------------------------------------------

@@ -34,6 +34,11 @@
         >
           <span class="nav-icon">◈</span> Dashboard
         </a>
+        <a href="/landing"
+          {% if request.url.path == '/landing' %}class="active"{% endif %}
+        >
+          <span class="nav-icon">⚡</span> Landing
+        </a>
         <a href="/qr"
           {% if request.url.path == '/qr' %}class="active"{% endif %}
         >

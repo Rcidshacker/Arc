@@ -389,9 +389,11 @@ def save_segment(
 def get_segments(conn: sqlite3.Connection, meeting_id: str) -> list[dict]:
     rows = conn.execute(
         """
-        SELECT * FROM transcript_segments
-        WHERE meeting_id = ?
-        ORDER BY start_seconds ASC
+        SELECT ts.*, s.name AS speaker_name
+        FROM transcript_segments ts
+        LEFT JOIN speakers s ON s.id = ts.speaker_id
+        WHERE ts.meeting_id = ?
+        ORDER BY ts.start_seconds ASC
         """,
         (meeting_id,),
     ).fetchall()

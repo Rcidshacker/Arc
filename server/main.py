@@ -36,7 +36,7 @@ ARC_TEMP_DIR = Path(os.environ["ARC_TEMP_DIR"])
 ARC_DB_PATH = Path(os.environ["ARC_DB_PATH"])
 ARC_SERVER_PORT = int(os.getenv("ARC_SERVER_PORT", "8000"))
 
-CLIPS_DIR = Path(__file__).parent.parent / "clips"
+CLIPS_DIR = ARC_TEMP_DIR.parent / "clips"
 
 # Resolve server/ directory
 SERVER_DIR = Path(__file__).parent
@@ -218,6 +218,7 @@ async def get_status(meeting_id: str) -> JSONResponse:
             "status": meeting["status"],
             "filename": meeting["filename"],
             "upload_time": meeting["upload_time"],
+            "duration_seconds": meeting.get("duration_seconds"),
             "error_message": meeting["error_message"],
         }),
     )
@@ -391,6 +392,11 @@ async def naming_page(request: Request, meeting_id: str) -> HTMLResponse:
             "label_suggestions": label_suggestions,
         },
     )
+
+
+@app.get("/landing", response_class=HTMLResponse)
+async def landing_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse("landing.html", {"request": request})
 
 
 @app.get("/qr", response_class=HTMLResponse)

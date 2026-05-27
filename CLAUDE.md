@@ -4,32 +4,47 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What Arc Is
 
-Local-first personal meeting intelligence. Android records Hinglish meetings with screen off → uploads to a FastAPI laptop server over WiFi → sequential ML pipeline (ffmpeg → faster-whisper → pyannote → resemblyzer → Gemma) → structured Obsidian vault note written in under 10 minutes. Zero cloud. Zero cost. Single user (Ruchit).
+Local-first personal meeting intelligence. Android records Hinglish meetings with screen off → uploads to a FastAPI laptop server over WiFi → sequential ML pipeline (ffmpeg → transcription → pyannote → resemblyzer → llama-server/Gemma) → structured Obsidian vault note written in under 10 minutes. Zero cloud. Zero cost. Single user (Ruchit).
 
 ## Commands
 
 ```powershell
-# Start server (from repo root)
+# Start FastAPI server (from repo root)
 uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Start pipeline watcher (separate terminal)
+# Start pipeline watcher (separate terminal, from repo root)
 python server/watcher.py
+
+# Run API smoke tests (from server/ directory — imports relative to server/)
+cd server
+pytest ..\tests\ -v
 
 # Mobile — build APK (requires Android Studio + JDK)
 cd mobile
 eas build --platform android --local
 ```
 
+## Three Required Services
+
+All three must be running before the pipeline can complete:
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| FastAPI (`uvicorn server.main:app`) | 8000 | Upload API + web UI + pipeline orchestration |
+| llama-server | 8080 | Transcription (llamacpp provider) + note generation |
+| Obsidian MCP SSE | 3100 | Vault writes (fallback: direct pathlib writes) |
+
+`LLAMACPP_HOST` and `OBSIDIAN_MCP_URL` env vars configure their endpoints.
+
 ## Before First Run (One-Time Manual Steps)
 
 ```powershell
-ollama pull gemma3:4b           # download model (~2.5GB)
-ffmpeg -version                 # must be on PATH — install from ffmpeg.org if missing
+ffmpeg -version    # must be on PATH — install from ffmpeg.org if missing
 ```
 
-Also required (cannot be automated):
+Also required:
 - Accept pyannote model terms at huggingface.co/pyannote/speaker-diarization-3.1
-- Copy `.env.example` → `.env` and set all values (especially `OBSIDIAN_VAULT_PATH`, `HF_TOKEN`)
+- Copy `.env.example` → `.env` and fill all values
 
 ## Environment Variables (`.env`)
 
@@ -40,11 +55,24 @@ ARC_INTAKE_DIR=C:\Users\Lenovo\Desktop\arc\intake
 ARC_TEMP_DIR=C:\Users\Lenovo\Desktop\arc\temp
 ARC_DB_PATH=C:\Users\Lenovo\Desktop\arc\arc.db
 ARC_SERVER_PORT=8000
-WHISPER_MODEL=large-v3
-WHISPER_DEVICE=cuda
-OLLAMA_MODEL=gemma3:4b
-OLLAMA_HOST=http://localhost:11434
 HF_TOKEN=<your-huggingface-token>
+
+# Transcription: llamacpp (default/local), groq, or gemini
+TRANSCRIPTION_PROVIDER=llamacpp
+LLAMACPP_HOST=http://localhost:8080
+
+# Groq fallback (TRANSCRIPTION_PROVIDER=groq, files <20MB)
+GROQ_API_KEY=<your-groq-key>
+
+# Gemini fallback (TRANSCRIPTION_PROVIDER=gemini, files >=20MB)
+GOOGLE_API_KEY=<your-google-key>
+
+# Obsidian MCP SSE endpoint (vault_writer tries this before direct writes)
+OBSIDIAN_MCP_URL=http://localhost:3100/sse
+
+# DEPRECATED — Ollama replaced by llama-server for all inference
+# OLLAMA_MODEL=gemma3:4b
+# OLLAMA_HOST=http://localhost:11434
 ```
 
 ## Architecture
@@ -53,44 +81,44 @@ Two independent surfaces, one backend:
 
 **Mobile** (`mobile/`) — React Native Expo bare workflow (Android only). Three screens: `QRScannerScreen` (one-time pairing), `RecorderScreen` (main UI), `UploadStatusScreen`. Foreground Service keeps recording alive with screen off.
 
-**Server** (`server/`) — FastAPI process on Windows laptop. Serves both the REST upload API and Jinja2 web UI on the same port. `watcher.py` runs as a separate process monitoring `intake/`.
+**Server** (`server/`) — FastAPI process on Windows laptop. Serves both the REST upload API and Jinja2 web UI on the same port. `watcher.py` runs as a separate process (or thread) monitoring `intake/`.
 
-**Pipeline** — sequential Python scripts in `server/pipeline/`. Must be sequential; RTX 4050 has 6GB VRAM (Whisper large-v3 ~3GB, pyannote ~1GB — cannot co-exist).
+**Pipeline** — sequential Python scripts in `server/pipeline/`. Must be sequential; RTX 4050 has 6GB VRAM (pyannote ~1GB, llama-server persists across calls — cannot co-run heavy models simultaneously).
 
 ```
 server/
 ├── main.py              — FastAPI app, all routes, QR gen on startup
-├── watcher.py           — watchdog FileSystemEventHandler on intake/
+├── watcher.py           — polling loop (2s interval) on intake/; no watchdog Observer
 ├── database.py          — SQLite schema init + all queries
 ├── pipeline/
 │   ├── normalizer.py    — ffmpeg subprocess: any format → WAV 16kHz mono
-│   ├── transcriber.py   — faster-whisper large-v3 (CUDA)
+│   ├── transcriber.py   — multi-provider: llamacpp (default) / groq / gemini
 │   ├── diarizer.py      — pyannote speaker-diarization-3.1 (max_speakers=8)
 │   ├── aligner.py       — overlap-match whisper segments to pyannote labels
-│   ├── speaker_db.py    — resemblyzer embeddings: extract, cosine match, store
+│   ├── speaker_db.py    — MVP: all speakers → naming UI (no embedding/matching yet)
 │   ├── name_inferrer.py — Gemma: infer speaker names from vocative context
-│   ├── note_generator.py— Gemma: transcript → structured JSON → Obsidian markdown
-│   └── vault_writer.py  — write meeting folder to Obsidian vault
+│   ├── note_generator.py— llama-server/Gemma 4 thinking mode → structured JSON
+│   └── vault_writer.py  — MCP write (via llama-server proxy) → fallback direct write
 └── templates/           — Jinja2 HTML (base, dashboard, naming, transcript)
 ```
 
 **Pipeline flow** (triggered per new file in `intake/`):
 1. ffmpeg normalize → WAV 16kHz mono
-2. faster-whisper → `{start, end, text, confidence}[]`
-3. pyannote → `{start, end, speaker_label}[]`
+2. Transcription via `TRANSCRIPTION_PROVIDER` (llamacpp/groq/gemini) → `{start, end, text, confidence}[]`
+3. pyannote → `{start, end, speaker}[]`
 4. aligner → `{start, end, speaker_label, text}[]`
-5. resemblyzer → match each speaker_label to stored embedding (threshold 0.75)
-6. If unknown speakers: Gemma infers names from transcript → set status `needs_naming` → halt
-7. Web UI: play 10s clip, show inferred name suggestion, user accepts/overrides
-8. Pipeline resumes: Gemma generates structured JSON note → vault_writer writes meeting folder
-9. Audio moved from `intake/` to `temp/`; status → `done`
+5. speaker_db MVP → extracts 10s clip per label, returns all labels as unknown
+6. Always halts at `needs_naming` → web UI shows clips, user names speakers
+7. Pipeline resumes: llama-server/Gemma generates structured JSON note (thinking mode)
+8. vault_writer: tries MCP → falls back to direct pathlib write → status `done`
+9. WAV moved from intake/ to temp/
 
 **Obsidian output** — each meeting writes a folder:
 ```
 Meetings/YYYY-MM-DD-HHMM-Speaker1-Speaker2/
 ├── note.md          — YAML frontmatter + summary/decisions/actions/wikilinks
-├── transcript.md    — speaker-tagged full transcript in JetBrains Mono
-└── audio_ref.txt    — one line: absolute path to file in temp/
+├── transcript.md    — speaker-tagged full transcript with [[wikilinks]]
+└── audio_ref.txt    — absolute path to file in temp/
 ```
 
 **SQLite** (`arc.db`) — WAL mode. Tables: `meetings`, `speakers`, `meeting_speakers`, `transcript_segments`, `upload_log`, `concepts`, `meeting_concepts`.
@@ -101,43 +129,44 @@ Meeting status flow: `uploaded` → `needs_naming` → `processing` → `done` /
 
 **Windows path safety** — use `pathlib.Path` everywhere. Never hardcode `/` separators.
 
-**ffmpeg subprocess** — always use list args, `shell=False`:
+**ffmpeg subprocess** — always list args, `shell=False`:
 ```python
 subprocess.run(["ffmpeg", "-y", "-i", str(input_path), "-ar", "16000", "-ac", "1", str(output_path)], check=True)
 ```
 
-**SQLite** — always open with `WAL` mode and `check_same_thread=False`. Server and watcher share the DB concurrently.
+**SQLite** — always open with WAL mode and `check_same_thread=False`. Server and watcher share the DB concurrently. All queries parameterized — no f-string interpolation into SQL.
 
-**Audio deletion** — audio is never auto-deleted. Only via explicit `DELETE /meeting/{id}/audio`. Validate deletion paths with `pathlib.Path.resolve()` and confirm the target is a child of `ARC_TEMP_DIR` before deleting (path traversal risk).
+**Audio deletion** — audio is never auto-deleted. Only via explicit `DELETE /meeting/{id}/audio`. Validate paths with `Path.resolve()` and confirm target is a child of `ARC_TEMP_DIR` (path traversal risk).
 
-**Ollama** — check Ollama is alive before name inference and note generation. If not running, set meeting status `error` with a clear message rather than crashing.
+**llama-server** — check connectivity before note generation. If unreachable, set meeting status `error` with a clear message. `LLAMACPP_HOST` defaults to `http://localhost:8080`.
 
-**Obsidian paths in DB** — store meeting folder paths relative to vault root (e.g., `Meetings/2025-05-26-1430-Rahul-Priya/`), not absolute. Resolve dynamically using `OBSIDIAN_VAULT_PATH` env var.
+**Obsidian paths in DB** — store paths relative to vault root (e.g. `Meetings/2025-05-26-1430-Rahul-Priya/`). Resolve dynamically using `OBSIDIAN_VAULT_PATH` env var.
 
-**API response format** — all JSON responses: `{success: bool, data: any, error: str | null}`.
+**API response format** — all JSON responses: `{success: bool, data: any, error: str | null}`. Return 409 for duplicate uploads (sha256 match), 400 for path traversal, 422 for bad input.
 
 **Pipeline is sequential** — do not parallelise pipeline steps. VRAM is the bottleneck.
 
-## Schema Notes (vs `05-BackendSchema.md`)
+**FastAPI route handlers** — no blocking ML/ffmpeg calls inline. Offload to background tasks or the watcher process.
 
-The audit identified two schema gaps to fix during build:
-- `speakers` table needs: `suggested_name TEXT NULLABLE` (stores Gemma inference between pipeline steps)
-- `meetings` table: rename `archive_path` → `temp_path`; add `audio_deleted INTEGER DEFAULT 0`
+## Key Implementation Details
 
-## Speaker Matching Calibration
+**diarizer.py** has three compatibility patches applied at runtime (not monkey-patched globally):
+1. SpeechBrain optional module stubs — pre-registers missing `k2_fsa`, `huggingface`, etc. in `sys.modules`
+2. `torch.load` weights_only patch — PyTorch 2.6 sets `weights_only=True` by default; pyannote checkpoints need `False`
+3. `hf_hub_download` token param patch — huggingface_hub ≥0.24 renamed `use_auth_token` → `token`
 
-Resemblyzer cosine threshold is `0.75`. If speaker matching accuracy falls below 70% during Phase 3 testing with real Hinglish audio:
-1. Lower threshold to `0.65` and retest
-2. If still insufficient, replace resemblyzer with speechbrain `SpeakerRecognition`
+**transcriber.py** provider routing: `TRANSCRIPTION_PROVIDER=llamacpp` sends base64-encoded WAV in OpenAI-compatible chat request. Groq and Gemini providers return timestamped segments; llamacpp returns a single segment spanning the full file (aligner handles this).
 
-**Do not build Phase 4 (naming UI) until Phase 3 spike passes.**
+**note_generator.py** uses `<|think|>` prefix in system prompt to activate Gemma 4 extended reasoning via llama-server. `_strip_thinking()` removes `<|think|>…</|think|>` blocks before JSON parsing.
 
-## Build Sequence (Hackathon)
+**vault_writer.py** MCP layer: POSTs to `{LLAMACPP_HOST}/mcp/call` with `{"server": OBSIDIAN_MCP_URL, "tool": "obsidian_create_note", ...}`. MCP failure is non-fatal; falls back to direct pathlib writes. Also does best-effort concept cross-linking and brain_log entries.
 
-Phase 1 → FastAPI server + QR + upload + dedup  
-Phase 2 → Android app (recording + upload)  
-Phase 3 → Transcription + diarization + speaker matching (**spike — validate before continuing**)  
-Phase 4 → Speaker naming UI + pipeline resume  
-Phase 5 → Note generation + Obsidian vault write  
-Phase 6 → Cross-meeting wikilinks + MCP validation  
-Phase 7 → Edge cases + polish  
+**speaker_db.py** is intentionally an MVP stub — `match_and_embed_speakers()` always returns all labels as unknown. Cross-session resemblyzer matching is v2.
+
+**watcher.py** uses a pure-Python polling loop (`start_observer`) instead of watchdog's `Observer` — avoids a `BaseThread` issue on Python 3.13. Polls every 2s.
+
+## Speaker Matching Calibration (v2 target)
+
+When cross-session speaker matching is added in v2:
+- Resemblyzer cosine threshold: start at `0.75`
+- If accuracy < 70% on real Hinglish audio: lower to `0.65`, then consider speechbrain `SpeakerRecognition`

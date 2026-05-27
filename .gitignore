@@ -43,6 +43,12 @@ mobile/bin/
 *.apk
 *.aab
 
+# Debug/dev scripts (not production code)
+dev/
+
+# Log files
+logs/
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -547,6 +547,8 @@ tbody td {
   vertical-align: middle;
   font-size: 13px;
   color: var(--text-primary);
+  max-width: 300px;
+  overflow: hidden;
 }
 
 .td-secondary {
@@ -998,29 +1000,7 @@ input[type="text"].has-suggestion {
 .gap-8  { gap: 8px; }
 .gap-12 { gap: 12px; }
 
-/* ─── Tooltip ─────────────────────────────────────────────── */
-[data-tooltip] { position: relative; }
-
-[data-tooltip]:hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--surface-elevated);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  padding: 6px 10px;
-  border-radius: var(--radius-badge);
-  border: 1px solid var(--border-accent);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 8px var(--accent-glow-soft);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-width: 300px;
-  pointer-events: none;
-  z-index: 200;
-}
+/* ─── Tooltip — removed; use native title attribute instead ── */
 
 /* ─── Sparkle decorative ──────────────────────────────────── */
 /* The star sparkle from logo bottom-right */

@@ -1,0 +1,465 @@
+{% extends "base.html" %}
+
+{% block title %}Arc — Your Meetings, Remembered{% endblock %}
+
+{% block head %}
+<meta name="description" content="Arc is a fully local, privacy-respecting meeting intelligence pipeline. Record on Android, process with ML, get structured Obsidian notes. Zero cloud. Zero cost." />
+<meta property="og:title" content="Arc — Local-First Meeting Intelligence" />
+<meta property="og:description" content="Record meetings on your phone. Get AI-structured notes in Obsidian. Fully local. Zero cloud." />
+<meta property="og:type" content="website" />
+<link rel="stylesheet" href="/static/landing.css" />
+{% endblock %}
+
+{% block content %}
+<div class="landing-page">
+
+  <!-- ═══════════════════════════════════════════════════════════
+       HERO
+       ═══════════════════════════════════════════════════════════ -->
+  <section class="landing-section hero" id="hero">
+    <div class="landing-container">
+
+      <img
+        src="/static/arc-logo.png"
+        alt="Arc — Your personalized meeting memory"
+        class="hero-logo"
+        width="320"
+        height="180"
+      />
+
+      <h1 class="hero-tagline">
+        <span class="hero-tagline-gradient">Your meetings,</span><br/>
+        <span class="hero-tagline-gradient">remembered.</span>
+      </h1>
+
+      <p class="hero-description">
+        Record on your phone. Walk out. A fully structured, speaker‑named,
+        wikilinked Obsidian note is waiting at your desk — processed entirely
+        on your laptop. No cloud. No subscription. No data leaving your machine.
+      </p>
+
+      <div class="hero-cta-group">
+        <a href="/" class="hero-cta hero-cta-primary" id="cta-dashboard">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          Open Dashboard
+        </a>
+        <a href="#how-it-works" class="hero-cta hero-cta-secondary" id="cta-learn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          See How It Works
+        </a>
+      </div>
+
+      <!-- Stats -->
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="hero-stat-value">&lt;10min</div>
+          <div class="hero-stat-label">Audio → Note</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-value">100%</div>
+          <div class="hero-stat-label">Local & Private</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-value">$0</div>
+          <div class="hero-stat-label">Forever Free</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-value">8+</div>
+          <div class="hero-stat-label">Speakers Tracked</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       FEATURES
+       ═══════════════════════════════════════════════════════════ -->
+  <section class="landing-section" id="features">
+    <div class="landing-container">
+
+      <div class="section-header-center reveal">
+        <p class="section-eyebrow">Capabilities</p>
+        <h2 class="section-heading">Everything runs on your machine</h2>
+        <p class="section-subheading">
+          A full ML pipeline — transcription, speaker diarization, voice matching,
+          and structured note generation — running locally on your GPU.
+        </p>
+      </div>
+
+      <div class="features-grid">
+
+        <!-- 1 -->
+        <div class="feature-card reveal reveal-delay-1">
+          <div class="feature-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          </div>
+          <h3 class="feature-title">Background Recording</h3>
+          <p class="feature-desc">
+            A lightweight Android app records meetings in the background with the screen off.
+            Foreground Service keeps capture alive and reliable. Nobody knows you're recording.
+          </p>
+        </div>
+
+        <!-- 2 -->
+        <div class="feature-card reveal reveal-delay-2">
+          <div class="feature-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+          </div>
+          <h3 class="feature-title">WiFi Auto‑Upload</h3>
+          <p class="feature-desc">
+            One tap after the meeting ends. The recording transfers to your laptop over
+            local WiFi in seconds. QR code pairing — zero manual configuration.
+          </p>
+        </div>
+
+        <!-- 3 -->
+        <div class="feature-card reveal reveal-delay-3">
+          <div class="feature-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93"/><path d="M8.56 9.8A4 4 0 1 1 15.44 9.8"/><circle cx="12" cy="16" r="2"/><path d="M12 14v-1.5"/><path d="M9.17 19.24 7.5 21"/><path d="M14.83 19.24 16.5 21"/></svg>
+          </div>
+          <h3 class="feature-title">Local ML Pipeline</h3>
+          <p class="feature-desc">
+            faster‑whisper (large‑v3) for Hinglish transcription, pyannote for speaker
+            diarization, resemblyzer for voice embeddings — all GPU‑accelerated on your RTX.
+          </p>
+        </div>
+
+        <!-- 4 -->
+        <div class="feature-card reveal reveal-delay-4">
+          <div class="feature-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <h3 class="feature-title">Speaker Recognition</h3>
+          <p class="feature-desc">
+            Name each voice once — Arc remembers forever. Voice embeddings match
+            speakers across sessions automatically. Gemma infers names from conversation context.
+          </p>
+        </div>
+
+        <!-- 5 -->
+        <div class="feature-card reveal reveal-delay-5">
+          <div class="feature-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+          </div>
+          <h3 class="feature-title">Obsidian Notes</h3>
+          <p class="feature-desc">
+            Structured markdown with YAML frontmatter, summaries, decisions, action items,
+            and <code>[[wikilinks]]</code> — written directly to your vault. Query with Claude via MCP.
+          </p>
+        </div>
+
+        <!-- 6 -->
+        <div class="feature-card reveal reveal-delay-6">
+          <div class="feature-icon" style="background: rgba(124, 58, 237, 0.1); border-color: rgba(124, 58, 237, 0.25); color: var(--violet-light);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <h3 class="feature-title">Zero Cloud</h3>
+          <p class="feature-desc">
+            No data leaves your machine. No cloud APIs. No subscriptions.
+            No telemetry. Your conversations stay yours — permanently and completely.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       HOW IT WORKS
+       ═══════════════════════════════════════════════════════════ -->
+  <section class="landing-section" id="how-it-works">
+    <div class="landing-container">
+
+      <div class="section-header-center reveal">
+        <p class="section-eyebrow">Pipeline</p>
+        <h2 class="section-heading">From pocket to Obsidian in 4 steps</h2>
+        <p class="section-subheading">
+          Record a meeting, walk away, and find a structured note waiting for you.
+          The entire pipeline is sequential and optimized for a single GPU.
+        </p>
+      </div>
+
+      <div class="pipeline reveal" id="pipeline">
+
+        <div class="pipeline-step" data-step="1">
+          <div class="pipeline-node">📱</div>
+          <p class="pipeline-label">Record</p>
+          <p class="pipeline-detail">
+            Tap once on your Android phone.<br/>
+            Screen off. Background recording.<br/>
+            AAC 128kbps — small file.
+          </p>
+        </div>
+
+        <div class="pipeline-step" data-step="2">
+          <div class="pipeline-node">📡</div>
+          <p class="pipeline-label">Upload</p>
+          <p class="pipeline-detail">
+            One tap to send over WiFi.<br/>
+            HTTP POST to your laptop.<br/>
+            SHA256 deduplication built in.
+          </p>
+        </div>
+
+        <div class="pipeline-step" data-step="3">
+          <div class="pipeline-node">🧠</div>
+          <p class="pipeline-label">Process</p>
+          <p class="pipeline-detail">
+            ffmpeg → faster-whisper → pyannote →<br/>
+            resemblyzer → Gemma 4.<br/>
+            All local. All GPU-accelerated.
+          </p>
+        </div>
+
+        <div class="pipeline-step" data-step="4">
+          <div class="pipeline-node">📓</div>
+          <p class="pipeline-label">Note</p>
+          <p class="pipeline-detail">
+            Structured Obsidian markdown.<br/>
+            Speaker-tagged. Wikilinked.<br/>
+            Queryable via Claude Desktop.
+          </p>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       ARCHITECTURE
+       ═══════════════════════════════════════════════════════════ -->
+  <section class="landing-section" id="architecture">
+    <div class="landing-container">
+
+      <div class="section-header-center reveal">
+        <p class="section-eyebrow">Architecture</p>
+        <h2 class="section-heading">Built for a single machine</h2>
+        <p class="section-subheading">
+          Two surfaces, one backend. React Native on Android, FastAPI on your
+          laptop, sequential ML pipeline optimized for 6GB VRAM.
+        </p>
+      </div>
+
+      <div class="arch-card reveal">
+        <div class="arch-diagram">
+
+          <div class="arch-block">
+            <div class="arch-block-icon">📱</div>
+            <div class="arch-block-title">Android App</div>
+            <div class="arch-block-sub">React Native · Expo</div>
+          </div>
+
+          <div class="arch-arrow">→</div>
+
+          <div class="arch-block" style="border-color: var(--border-accent);">
+            <div class="arch-block-icon">⚡</div>
+            <div class="arch-block-title">FastAPI Server</div>
+            <div class="arch-block-sub">Port 8000 · SQLite WAL</div>
+          </div>
+
+          <div class="arch-arrow">→</div>
+
+          <div class="arch-block">
+            <div class="arch-block-icon">🧠</div>
+            <div class="arch-block-title">ML Pipeline</div>
+            <div class="arch-block-sub">Sequential · CUDA</div>
+          </div>
+
+          <div class="arch-arrow">→</div>
+
+          <div class="arch-block" style="border-color: rgba(124, 58, 237, 0.3);">
+            <div class="arch-block-icon">📓</div>
+            <div class="arch-block-title">Obsidian Vault</div>
+            <div class="arch-block-sub">Markdown · MCP</div>
+          </div>
+
+        </div>
+
+        <!-- Pipeline detail list -->
+        <div class="arch-pipeline-list">
+          <div class="arch-pipeline-item">
+            <span class="arch-pipeline-item-icon">▸</span>
+            normalizer.py — ffmpeg 16kHz mono
+          </div>
+          <div class="arch-pipeline-item">
+            <span class="arch-pipeline-item-icon">▸</span>
+            transcriber.py — faster-whisper
+          </div>
+          <div class="arch-pipeline-item">
+            <span class="arch-pipeline-item-icon">▸</span>
+            diarizer.py — pyannote 3.1
+          </div>
+          <div class="arch-pipeline-item">
+            <span class="arch-pipeline-item-icon">▸</span>
+            aligner.py — segment alignment
+          </div>
+          <div class="arch-pipeline-item">
+            <span class="arch-pipeline-item-icon">▸</span>
+            speaker_db.py — voice embeddings
+          </div>
+          <div class="arch-pipeline-item">
+            <span class="arch-pipeline-item-icon">▸</span>
+            name_inferrer.py — Gemma naming
+          </div>
+          <div class="arch-pipeline-item">
+            <span class="arch-pipeline-item-icon">▸</span>
+            note_generator.py — structured JSON
+          </div>
+          <div class="arch-pipeline-item">
+            <span class="arch-pipeline-item-icon">▸</span>
+            vault_writer.py — Obsidian output
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       PRIVACY / TRUST
+       ═══════════════════════════════════════════════════════════ -->
+  <section class="landing-section" id="privacy">
+    <div class="landing-container">
+
+      <div class="section-header-center reveal">
+        <p class="section-eyebrow">Privacy</p>
+        <h2 class="section-heading">Your conversations. Your machine. Period.</h2>
+      </div>
+
+      <div class="trust-grid">
+
+        <div class="trust-card reveal reveal-delay-1">
+          <span class="trust-icon">🔒</span>
+          <h3 class="trust-title">Zero Cloud</h3>
+          <p class="trust-desc">
+            No data ever leaves your laptop. No cloud APIs, no external services, no telemetry.
+            Audio, transcripts, and notes live only on your local disk.
+          </p>
+        </div>
+
+        <div class="trust-card reveal reveal-delay-2">
+          <span class="trust-icon">💸</span>
+          <h3 class="trust-title">Zero Cost</h3>
+          <p class="trust-desc">
+            No subscriptions, no API fees, no premium tiers. Every model runs on your GPU.
+            The only cost is the hardware you already own.
+          </p>
+        </div>
+
+        <div class="trust-card reveal reveal-delay-3">
+          <span class="trust-icon">🛡️</span>
+          <h3 class="trust-title">Zero Leaks</h3>
+          <p class="trust-desc">
+            Audio is never auto-deleted — you control when it goes. Path traversal protection,
+            SHA256 deduplication, and SQLite WAL mode for safe concurrent access.
+          </p>
+        </div>
+
+      </div>
+
+      <!-- Tech stack badges -->
+      <div class="tech-badges reveal">
+        <span class="tech-badge"><span class="tech-badge-dot" style="background: #3572A5;"></span> Python</span>
+        <span class="tech-badge"><span class="tech-badge-dot" style="background: #009485;"></span> FastAPI</span>
+        <span class="tech-badge"><span class="tech-badge-dot" style="background: #76B900;"></span> CUDA</span>
+        <span class="tech-badge"><span class="tech-badge-dot" style="background: #EF4444;"></span> PyTorch</span>
+        <span class="tech-badge"><span class="tech-badge-dot" style="background: #F59E0B;"></span> faster-whisper</span>
+        <span class="tech-badge"><span class="tech-badge-dot" style="background: #8B5CF6;"></span> pyannote</span>
+        <span class="tech-badge"><span class="tech-badge-dot" style="background: #22C55E;"></span> Gemma 4</span>
+        <span class="tech-badge"><span class="tech-badge-dot" style="background: #7C3AED;"></span> Obsidian</span>
+        <span class="tech-badge"><span class="tech-badge-dot" style="background: #61DAFB;"></span> React Native</span>
+        <span class="tech-badge"><span class="tech-badge-dot" style="background: #FF6B35;"></span> ffmpeg</span>
+      </div>
+
+    </div>
+  </section>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       FOOTER
+       ═══════════════════════════════════════════════════════════ -->
+  <footer class="landing-footer">
+    <div class="landing-container">
+      <div class="landing-footer-wordmark">[Arc]</div>
+      <p>Local-first personal meeting intelligence.</p>
+      <div class="landing-footer-links">
+        <a href="/">Dashboard</a>
+        <a href="/qr">QR Pair</a>
+        <a href="#features">Features</a>
+        <a href="#how-it-works">Pipeline</a>
+        <a href="#architecture">Architecture</a>
+      </div>
+    </div>
+  </footer>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  /* ── Scroll reveal via Intersection Observer ─────────────────────────── */
+  var reveals = document.querySelectorAll('.reveal');
+
+  if ('IntersectionObserver' in window) {
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+
+    reveals.forEach(function (el) { observer.observe(el); });
+  } else {
+    /* Fallback: show everything */
+    reveals.forEach(function (el) { el.classList.add('visible'); });
+  }
+
+  /* ── Pipeline step animation ─────────────────────────────────────────── */
+  var pipeline = document.getElementById('pipeline');
+
+  if (pipeline && 'IntersectionObserver' in window) {
+    var pipelineObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          pipeline.classList.add('animate-line');
+
+          var steps = pipeline.querySelectorAll('.pipeline-step');
+          steps.forEach(function (step, i) {
+            setTimeout(function () {
+              step.classList.add('active');
+            }, 300 + (i * 350));
+          });
+
+          pipelineObserver.unobserve(pipeline);
+        }
+      });
+    }, { threshold: 0.3 });
+
+    pipelineObserver.observe(pipeline);
+  }
+
+  /* ── Smooth scroll for anchor links ──────────────────────────────────── */
+  document.querySelectorAll('a[href^="#"]').forEach(function (link) {
+    link.addEventListener('click', function (e) {
+      var target = document.querySelector(link.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+
+})();
+</script>
+{% endblock %}
