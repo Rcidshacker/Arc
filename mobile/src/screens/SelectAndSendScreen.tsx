@@ -25,8 +25,9 @@ function formatDate(iso: string): string {
 }
 
 function formatDuration(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
+  const total = Math.floor(sec);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
@@ -38,11 +39,14 @@ export function SelectAndSendScreen({ route, navigation }: Props): React.JSX.Ele
 
   useEffect(() => {
     async function load(): Promise<void> {
-      const [all, url] = await Promise.all([getAllRecordings(), getServerUrl()]);
-      const selected = all.filter((r) => recordingIds.includes(r.id));
-      setRecordings(selected);
-      setServerUrlState(url);
-      setLoading(false);
+      try {
+        const [all, url] = await Promise.all([getAllRecordings(), getServerUrl()]);
+        const selected = all.filter((r) => recordingIds.includes(r.id));
+        setRecordings(selected);
+        setServerUrlState(url);
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, [recordingIds]);
