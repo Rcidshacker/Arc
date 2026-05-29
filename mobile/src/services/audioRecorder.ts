@@ -1,5 +1,29 @@
+/**
+ * TESTING GUIDE:
+ * - Web (npx expo start --web): Uses MediaRecorder API. Tests UI + upload flow.
+ *   Background/screen-off recording is NOT available on web — that's fine.
+ * - Expo Go: Uses expo-av. Tests recording + upload. VIForegroundService no-ops
+ *   (custom native module not included in Expo Go).
+ * - APK (after expo prebuild): Full background recording with screen off. Production behavior.
+ */
+import { Platform } from 'react-native';
 import { Audio } from 'expo-av';
-import VIForegroundService from '@voximplant/react-native-foreground-service';
+
+// VIForegroundService: native only, not available in Expo Go or on web
+let VIForegroundService: {
+  getInstance(): {
+    startService(config: unknown): Promise<void>;
+    stopService(): Promise<void>;
+  };
+} | null = null;
+
+if (Platform.OS !== 'web') {
+  try {
+    VIForegroundService = require('@voximplant/react-native-foreground-service').default;
+  } catch {
+    // Not available in Expo Go — VIForegroundService calls will no-op
+  }
+}
 
 export interface RecordingState {
   isRecording: boolean;
@@ -7,7 +31,14 @@ export interface RecordingState {
   uri: string | null;
 }
 
+// Native recording state
 let activeRecording: Audio.Recording | null = null;
+
+// Web recording state
+let webMediaRecorder: MediaRecorder | null = null;
+let webChunks: BlobPart[] = [];
+let lastWebBlob: Blob | null = null;
+
 let recordingStartTime: number = 0;
 
 const FOREGROUND_SERVICE_CONFIG = {
@@ -20,19 +51,112 @@ const FOREGROUND_SERVICE_CONFIG = {
   button: false,
 } as const;
 
-async function requestPermissions(): Promise<void> {
-  const { status } = await Audio.requestPermissionsAsync();
-  if (status !== 'granted') {
-    throw new Error('Microphone permission denied. Please enable it in Settings.');
-  }
-}
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 export async function startRecording(): Promise<void> {
+  if (Platform.OS === 'web') {
+    return startWebRecording();
+  }
+  return startNativeRecording();
+}
+
+export async function stopRecording(): Promise<string> {
+  if (Platform.OS === 'web') {
+    return stopWebRecording();
+  }
+  return stopNativeRecording();
+}
+
+export function getLastWebBlob(): Blob | null { return lastWebBlob; }
+
+export function getRecordingStatus(): RecordingState {
+  const isRecording = Platform.OS === 'web'
+    ? webMediaRecorder !== null
+    : activeRecording !== null;
+
+  return {
+    isRecording,
+    durationMs: isRecording ? Date.now() - recordingStartTime : 0,
+    uri: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Web implementation — MediaRecorder API
+// ---------------------------------------------------------------------------
+
+async function startWebRecording(): Promise<void> {
+  if (webMediaRecorder !== null) {
+    throw new Error('A recording is already in progress.');
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Audio recording is not supported in this browser.');
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  webChunks = [];
+  const recorder = new MediaRecorder(stream);
+
+  recorder.ondataavailable = (e: BlobEvent) => {
+    if (e.data.size > 0) {
+      webChunks.push(e.data);
+    }
+  };
+
+  recorder.start(1000); // collect chunks every 1s
+  webMediaRecorder = recorder;
+  recordingStartTime = Date.now();
+}
+
+async function stopWebRecording(): Promise<string> {
+  if (webMediaRecorder === null) {
+    throw new Error('No active web recording to stop.');
+  }
+
+  return new Promise<string>((resolve, reject) => {
+    const recorder = webMediaRecorder!;
+
+    recorder.onstop = () => {
+      const mimeType = recorder.mimeType || 'audio/webm';
+      const blob = new Blob(webChunks, { type: mimeType });
+      webChunks = [];
+      webMediaRecorder = null;
+      recordingStartTime = 0;
+
+      lastWebBlob = blob;
+      // Revoke previous blob URLs to avoid memory leaks (best effort)
+      const url = URL.createObjectURL(blob);
+      resolve(url);
+    };
+
+    recorder.onerror = () => {
+      webMediaRecorder = null;
+      webChunks = [];
+      reject(new Error('MediaRecorder error while stopping.'));
+    };
+
+    // Stop all audio tracks so the browser releases the microphone
+    recorder.stream.getTracks().forEach((track) => track.stop());
+    recorder.stop();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Native implementation — expo-av + VIForegroundService
+// ---------------------------------------------------------------------------
+
+async function startNativeRecording(): Promise<void> {
   if (activeRecording !== null) {
     throw new Error('A recording is already in progress.');
   }
 
-  await requestPermissions();
+  const { status } = await Audio.requestPermissionsAsync();
+  if (status !== 'granted') {
+    throw new Error('Microphone permission denied. Please enable it in Settings.');
+  }
 
   await Audio.setAudioModeAsync({
     allowsRecordingIOS: true,
@@ -42,7 +166,10 @@ export async function startRecording(): Promise<void> {
   });
 
   // Start foreground service BEFORE recording (Android 14 requirement)
-  await VIForegroundService.getInstance().startService(FOREGROUND_SERVICE_CONFIG);
+  // No-ops if VIForegroundService is null (Expo Go)
+  if (VIForegroundService !== null) {
+    await VIForegroundService.getInstance().startService(FOREGROUND_SERVICE_CONFIG);
+  }
 
   const recordingOptions: Audio.RecordingOptions = {
     ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
@@ -67,12 +194,14 @@ export async function startRecording(): Promise<void> {
   recordingStartTime = Date.now();
 }
 
-export async function stopRecording(): Promise<string> {
+async function stopNativeRecording(): Promise<string> {
   if (activeRecording === null) {
     throw new Error('No active recording to stop.');
   }
 
-  await VIForegroundService.getInstance().stopService();
+  if (VIForegroundService !== null) {
+    await VIForegroundService.getInstance().stopService();
+  }
 
   await activeRecording.stopAndUnloadAsync();
   const uri = activeRecording.getURI();
@@ -88,20 +217,4 @@ export async function stopRecording(): Promise<string> {
   });
 
   return uri;
-}
-
-export function getRecordingStatus(): RecordingState {
-  if (activeRecording === null) {
-    return {
-      isRecording: false,
-      durationMs: 0,
-      uri: null,
-    };
-  }
-
-  return {
-    isRecording: true,
-    durationMs: Date.now() - recordingStartTime,
-    uri: null,
-  };
 }
