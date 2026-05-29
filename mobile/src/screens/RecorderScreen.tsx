@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
+  Platform,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -15,13 +16,13 @@ import Animated, {
   cancelAnimation,
   Easing,
 } from 'react-native-reanimated';
-import type { StackScreenProps } from '@react-navigation/stack';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 
-import type { RootStackParamList } from '../../App';
+import type { MainTabParamList } from '../../App';
 import { startRecording, stopRecording } from '../services/audioRecorder';
 import { getServerUrl } from '../services/storage';
 
-type Props = StackScreenProps<RootStackParamList, 'Recorder'>;
+type Props = BottomTabScreenProps<MainTabParamList, 'Recorder'>;
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -142,12 +143,12 @@ export function RecorderScreen({ navigation }: Props): React.JSX.Element {
         Alert.alert(
           'Server Not Configured',
           'No server URL found. Please scan the QR code again.',
-          [{ text: 'Scan QR', onPress: () => navigation.replace('QRScanner') }],
+          [{ text: 'Scan QR', onPress: () => (navigation as any).navigate('QRScan') }],
         );
         return;
       }
 
-      navigation.navigate('UploadStatus', { fileUri, serverUrl });
+      (navigation as any).navigate('UploadProgress', { recordingIds: [fileUri], serverUrl });
     } catch (err) {
       setIsRecording(false);
       setDurationMs(0);
@@ -170,6 +171,14 @@ export function RecorderScreen({ navigation }: Props): React.JSX.Element {
 
   return (
     <View style={styles.container}>
+      {Platform.OS === 'web' && (
+        <View style={styles.webBanner}>
+          <Text style={styles.webBannerText}>
+            Background recording not available in browser — use Android app for full functionality
+          </Text>
+        </View>
+      )}
+
       <View style={styles.timerContainer}>
         <Text style={styles.timerText}>{formatDuration(durationMs)}</Text>
       </View>
@@ -244,5 +253,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     letterSpacing: 0.5,
     textAlign: 'center',
+  },
+  webBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#141414',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  webBannerText: {
+    color: '#6B7280',
+    fontSize: 11,
+    textAlign: 'center',
+    letterSpacing: 0.2,
   },
 });
