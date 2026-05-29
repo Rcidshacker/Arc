@@ -52,6 +52,8 @@ export function UploadProgressScreen({ route, navigation }: Props): React.JSX.El
   const { recordingIds, serverUrl } = route.params;
   const [files, setFiles] = useState<FileState[]>([]);
   const [doneCount, setDoneCount] = useState(0);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const speedWindowRef = useRef<{ ts: number; bytes: number }[]>([]);
 
   useEffect(() => {
@@ -76,8 +78,8 @@ export function UploadProgressScreen({ route, navigation }: Props): React.JSX.El
         for (const rec of selected) {
           await uploadOne(rec);
         }
-      } catch {
-        // init error — individual files handle their own errors in uploadOne
+      } catch (err) {
+        setInitError(err instanceof Error ? err.message : 'Failed to load recordings.');
       }
     }
     init();
@@ -97,6 +99,7 @@ export function UploadProgressScreen({ route, navigation }: Props): React.JSX.El
   }
 
   async function uploadOne(rec: Recording): Promise<void> {
+    setUploading(true);
     setFiles((prev) => prev.map((f) =>
       f.rec.id === rec.id ? { ...f, status: 'uploading' } : f,
     ));
@@ -135,6 +138,7 @@ export function UploadProgressScreen({ route, navigation }: Props): React.JSX.El
       ));
     } finally {
       setDoneCount((n) => n + 1);
+      setUploading(false);
     }
   }
 
@@ -149,6 +153,14 @@ export function UploadProgressScreen({ route, navigation }: Props): React.JSX.El
 
   return (
     <View style={styles.container}>
+      {initError !== null && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>{initError}</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.errorBackBtn}>
+            <Text style={styles.retryText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>
           {allDone
@@ -199,8 +211,8 @@ export function UploadProgressScreen({ route, navigation }: Props): React.JSX.El
               {f.status === 'error' && (
                 <View style={styles.errorRow}>
                   <Text style={[styles.statusText, { color: Colors.error, flex: 1 }]} numberOfLines={1}>{f.error}</Text>
-                  <TouchableOpacity onPress={() => handleRetry(f.rec)}>
-                    <Text style={styles.retryText}>Retry</Text>
+                  <TouchableOpacity onPress={() => handleRetry(f.rec)} disabled={uploading}>
+                    <Text style={[styles.retryText, uploading && { opacity: 0.4 }]}>Retry</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -253,4 +265,11 @@ const styles = StyleSheet.create({
     borderRadius: 14, paddingVertical: 16, alignItems: 'center',
   },
   doneButtonText: { color: Colors.text, fontSize: Typography.size.base, fontFamily: Typography.family.bold },
+  errorBanner: {
+    margin: 16, padding: 14, backgroundColor: Colors.bgElevated,
+    borderRadius: 12, borderWidth: 1, borderColor: Colors.error,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  errorBannerText: { color: Colors.error, fontSize: Typography.size.sm, fontFamily: Typography.family.ui, flex: 1 },
+  errorBackBtn: { marginLeft: 12 },
 });
