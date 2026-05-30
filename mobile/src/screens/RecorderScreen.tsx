@@ -258,6 +258,7 @@ const styles = StyleSheet.create({
     borderRadius: PULSE_SIZE / 2,
     borderWidth: 2,
     backgroundColor: 'transparent',
+    pointerEvents: 'none',
   },
   accentRing: {
     position: 'absolute',
@@ -266,6 +267,7 @@ const styles = StyleSheet.create({
     borderRadius: RING_SIZE / 2,
     borderWidth: 1.5,
     backgroundColor: 'transparent',
+    pointerEvents: 'none',
   },
   recordButton: {
     width: BUTTON_SIZE,

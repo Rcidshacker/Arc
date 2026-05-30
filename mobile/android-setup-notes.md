@@ -63,7 +63,7 @@ It should be auto-added by `expo prebuild`, but verify the following at the bott
 apply plugin: 'com.facebook.react'
 ```
 
-And in `android/build.gradle`, confirm that the React Native version matches 0.74.x.
+And in `android/build.gradle`, confirm that the React Native version matches 0.77.x (SDK 54).
 
 ---
 

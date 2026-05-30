@@ -16,12 +16,25 @@
         "INTERNET",
         "ACCESS_NETWORK_STATE",
         "CAMERA",
-        "WAKE_LOCK"
+        "WAKE_LOCK",
+        "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
       ]
+    },
+    "splash": {
+      "backgroundColor": "#15161D"
+    },
+    "web": {
+      "bundler": "metro"
     },
     "plugins": [
       "expo-camera",
-      ["expo-av", {"microphonePermission": "Arc needs microphone access to record meetings."}]
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Arc needs microphone access to record meetings."
+        }
+      ],
+      "expo-video"
     ]
   }
 }

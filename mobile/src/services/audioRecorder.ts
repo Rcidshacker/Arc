@@ -2,12 +2,12 @@
  * TESTING GUIDE:
  * - Web (npx expo start --web): Uses MediaRecorder API. Tests UI + upload flow.
  *   Background/screen-off recording is NOT available on web — that's fine.
- * - Expo Go: Uses expo-av. Tests recording + upload. VIForegroundService no-ops
+ * - Expo Go: Uses expo-audio. Tests recording + upload. VIForegroundService no-ops
  *   (custom native module not included in Expo Go).
  * - APK (after expo prebuild): Full background recording with screen off. Production behavior.
  */
 import { Platform } from 'react-native';
-import { Audio } from 'expo-av';
+import { AudioRecorder, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 
 // VIForegroundService: native only, not available in Expo Go or on web
 let VIForegroundService: {
@@ -32,7 +32,7 @@ export interface RecordingState {
 }
 
 // Native recording state
-let activeRecording: Audio.Recording | null = null;
+let activeRecording: AudioRecorder | null = null;
 
 // Web recording state
 let webMediaRecorder: MediaRecorder | null = null;
@@ -145,7 +145,7 @@ async function stopWebRecording(): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Native implementation — expo-av + VIForegroundService
+// Native implementation — expo-audio + VIForegroundService
 // ---------------------------------------------------------------------------
 
 async function startNativeRecording(): Promise<void> {
@@ -153,16 +153,14 @@ async function startNativeRecording(): Promise<void> {
     throw new Error('A recording is already in progress.');
   }
 
-  const { status } = await Audio.requestPermissionsAsync();
+  const { status } = await requestRecordingPermissionsAsync();
   if (status !== 'granted') {
     throw new Error('Microphone permission denied. Please enable it in Settings.');
   }
 
-  await Audio.setAudioModeAsync({
-    allowsRecordingIOS: true,
-    playsInSilentModeIOS: true,
-    shouldDuckAndroid: false,
-    playThroughEarpieceAndroid: false,
+  await setAudioModeAsync({
+    allowsRecording: true,
+    playsInSilentMode: true,
   });
 
   // Start foreground service BEFORE recording (Android 14 requirement)
@@ -171,26 +169,10 @@ async function startNativeRecording(): Promise<void> {
     await VIForegroundService.getInstance().startService(FOREGROUND_SERVICE_CONFIG);
   }
 
-  const recordingOptions: Audio.RecordingOptions = {
-    ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-    android: {
-      extension: '.m4a',
-      outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-      audioEncoder: Audio.AndroidAudioEncoder.AAC,
-      sampleRate: 44100,
-      numberOfChannels: 2,
-      bitRate: 128000,
-    },
-    ios: {
-      ...Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
-    },
-    web: {
-      ...Audio.RecordingOptionsPresets.HIGH_QUALITY.web,
-    },
-  };
-
-  const { recording } = await Audio.Recording.createAsync(recordingOptions);
-  activeRecording = recording;
+  const recorder = new AudioRecorder(RecordingPresets.HIGH_QUALITY);
+  await recorder.prepareToRecordAsync();
+  recorder.record();
+  activeRecording = recorder;
   recordingStartTime = Date.now();
 }
 
@@ -203,8 +185,8 @@ async function stopNativeRecording(): Promise<string> {
     await VIForegroundService.getInstance().stopService();
   }
 
-  await activeRecording.stopAndUnloadAsync();
-  const uri = activeRecording.getURI();
+  await activeRecording.stop();
+  const uri = activeRecording.uri;
   activeRecording = null;
   recordingStartTime = 0;
 
@@ -212,9 +194,7 @@ async function stopNativeRecording(): Promise<string> {
     throw new Error('Recording completed but no file URI was returned.');
   }
 
-  await Audio.setAudioModeAsync({
-    allowsRecordingIOS: false,
-  });
+  await setAudioModeAsync({ allowsRecording: false });
 
   return uri;
 }

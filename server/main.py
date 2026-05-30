@@ -18,6 +18,7 @@ from typing import Optional
 import qrcode
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, File, Form, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -73,6 +74,14 @@ from database import (  # noqa: E402 – must come after env load
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="Arc Meeting Intelligence", version="0.1.0")
+
+# Allow Expo web dev server (localhost:19006) to reach the API during development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 ARC_INTAKE_DIR.mkdir(parents=True, exist_ok=True)
 ARC_TEMP_DIR.mkdir(parents=True, exist_ok=True)

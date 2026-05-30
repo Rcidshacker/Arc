@@ -1,5 +1,5 @@
 // mobile/src/screens/SelectAndSendScreen.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import type { StackScreenProps } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 import { Colors } from '../theme/colors';
@@ -50,6 +51,10 @@ export function SelectAndSendScreen({ route, navigation }: Props): React.JSX.Ele
     }
     load();
   }, [recordingIds]);
+
+  useFocusEffect(useCallback(() => {
+    getServerUrl().then(setServerUrlState).catch(() => {});
+  }, []));
 
   function handlePair(): void {
     navigation.navigate('QRScan');

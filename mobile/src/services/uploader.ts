@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { Platform } from 'react-native';
 import axios, { AxiosError } from 'axios';
 
 export interface UploadProgress {
@@ -21,12 +21,94 @@ interface ErrorApiResponse {
   error: string;
 }
 
+// expo-file-system is native-only — conditionally required
+let FileSystem: { getInfoAsync(uri: string): Promise<{ exists: boolean; size?: number }> } | null = null;
+if (Platform.OS !== 'web') {
+  FileSystem = require('expo-file-system');
+}
+
 export async function uploadAudio(
   fileUri: string,
   serverUrl: string,
   onProgress: (progress: UploadProgress) => void,
 ): Promise<{ meetingId: string; sha256: string }> {
-  const fileInfo = await FileSystem.getInfoAsync(fileUri);
+  if (Platform.OS === 'web') {
+    return uploadAudioWeb(fileUri, serverUrl, onProgress);
+  }
+  return uploadAudioNative(fileUri, serverUrl, onProgress);
+}
+
+// ---------------------------------------------------------------------------
+// Web upload — fileUri is a blob: URL from MediaRecorder
+// ---------------------------------------------------------------------------
+
+async function uploadAudioWeb(
+  fileUri: string,
+  serverUrl: string,
+  onProgress: (progress: UploadProgress) => void,
+): Promise<{ meetingId: string; sha256: string }> {
+  // Fetch the blob from the object URL created during stopRecording()
+  const blobResponse = await fetch(fileUri);
+  const blob = await blobResponse.blob();
+
+  const formData = new FormData();
+  // Server accepts any audio — webm works with ffmpeg normalizer
+  formData.append('file', blob, 'recording.webm');
+
+  return new Promise<{ meetingId: string; sha256: string }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    xhr.upload.onprogress = (e: ProgressEvent) => {
+      if (e.lengthComputable) {
+        const percent = Math.round((e.loaded / e.total) * 100);
+        onProgress({ loaded: e.loaded, total: e.total, percent });
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status === 409) {
+        reject(new Error('This recording was already uploaded.'));
+        return;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const resp: UploadApiResponse = JSON.parse(xhr.responseText);
+          const { meeting_id, sha256 } = resp.data;
+          resolve({ meetingId: meeting_id, sha256 });
+        } catch {
+          reject(new Error('Invalid server response.'));
+        }
+        return;
+      }
+      try {
+        const resp: ErrorApiResponse = JSON.parse(xhr.responseText);
+        reject(new Error(resp.error ?? `Upload failed with status ${xhr.status}.`));
+      } catch {
+        reject(new Error(`Upload failed with status ${xhr.status}.`));
+      }
+    };
+
+    xhr.onerror = () =>
+      reject(new Error('Cannot reach the server. Make sure the laptop is on the same network.'));
+    xhr.ontimeout = () =>
+      reject(new Error('Upload timed out. Check your network and try again.'));
+
+    xhr.timeout = 300_000;
+    xhr.open('POST', `${serverUrl}/upload`);
+    xhr.send(formData);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Native upload — fileUri is a file:// URI from expo-audio
+// ---------------------------------------------------------------------------
+
+async function uploadAudioNative(
+  fileUri: string,
+  serverUrl: string,
+  onProgress: (progress: UploadProgress) => void,
+): Promise<{ meetingId: string; sha256: string }> {
+  const fileInfo = await FileSystem!.getInfoAsync(fileUri);
 
   if (!fileInfo.exists) {
     throw new Error('Audio file not found at the specified path.');
@@ -56,7 +138,7 @@ export async function uploadAudio(
           const percent = Math.round((loaded / total) * 100);
           onProgress({ loaded, total, percent });
         },
-        timeout: 300_000, // 5 minutes
+        timeout: 300_000,
       },
     );
 

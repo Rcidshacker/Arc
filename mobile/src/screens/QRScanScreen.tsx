@@ -30,15 +30,26 @@ type Props = StackScreenProps<RootStackParamList, 'QRScan'>;
 function WebUrlInput({ onConnect }: { onConnect: (url: string) => void }): React.JSX.Element {
   const [inputUrl, setInputUrl] = useState('');
   const [error, setError] = useState('');
+  const [showHttpWarning, setShowHttpWarning] = useState(false);
 
   function handleConnect(): void {
     const trimmed = inputUrl.trim();
-    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-      setError('URL must start with http:// or https://');
-      return;
+    try {
+      const parsed = new URL(trimmed);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        setError('URL must start with http:// or https://');
+        return;
+      }
+      if (!parsed.hostname) {
+        setError('Enter a valid URL with a hostname, e.g. http://192.168.1.10:8000');
+        return;
+      }
+      setError('');
+      setShowHttpWarning(parsed.protocol === 'http:');
+      onConnect(trimmed);
+    } catch {
+      setError('Invalid URL format. Example: http://192.168.1.10:8000');
     }
-    setError('');
-    onConnect(trimmed);
   }
 
   return (
@@ -61,6 +72,9 @@ function WebUrlInput({ onConnect }: { onConnect: (url: string) => void }): React
       <TouchableOpacity style={styles.button} onPress={handleConnect} activeOpacity={0.8}>
         <Text style={styles.buttonText}>Connect</Text>
       </TouchableOpacity>
+      {showHttpWarning && (
+        <Text style={styles.httpWarningText}>⚠ Unencrypted connection — safe for local network</Text>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -188,6 +202,12 @@ const styles = StyleSheet.create({
     color: Colors.error,
     fontSize: Typography.size.sm,
     marginBottom: 12,
+  },
+  httpWarningText: {
+    color: Colors.textMuted,
+    fontSize: Typography.size.sm,
+    marginTop: 8,
+    textAlign: 'center',
   },
   button: {
     backgroundColor: Colors.accent,
