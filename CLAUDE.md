@@ -9,11 +9,16 @@ Local-first personal meeting intelligence. Android records Hinglish meetings wit
 ## Commands
 
 ```powershell
-# Start FastAPI server (from repo root)
-uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
+# Activate venv first (required — dependencies live in .venv, not global Python)
+.\.venv\Scripts\Activate.ps1
 
-# Start pipeline watcher (separate terminal, from repo root)
-python server/watcher.py
+# Start FastAPI server (from repo root)
+# PYTHONPATH=server required — server/main.py imports 'database' as a top-level module
+# Must use .venv\Scripts\uvicorn.exe, not system uvicorn
+$env:PYTHONPATH="server"; .venv\Scripts\uvicorn.exe server.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Start pipeline watcher (separate terminal, from repo root — activate venv first)
+$env:PYTHONPATH = "server"; python server/watcher.py
 
 # Run API smoke tests (from server/ directory — imports relative to server/)
 cd server
