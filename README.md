@@ -1,9 +1,3 @@
-![Python](https://img.shields.io/badge/Python-3.13-blue?logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)
-![React Native](https://img.shields.io/badge/React_Native-Expo_54-000?logo=expo)
-![llama.cpp](https://img.shields.io/badge/llama.cpp-Gemma_4-orange)
-![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?logo=sqlite)
-![License](https://img.shields.io/badge/License-MIT-green)
 
 <div align="center">
 
@@ -37,6 +31,7 @@ Arc is a local-first personal meeting intelligence system. Android records meeti
 ## 📱 Features
 
 ### 📱 Android App (Expo SDK 54)
+
 - **Background audio recording** — continues with screen off (via Android Foreground Service)
 - **Custom splash screen** with video animation
 - **Library screen** — manage, playback, and select recordings to send
@@ -48,6 +43,7 @@ Arc is a local-first personal meeting intelligence system. Android records meeti
 - **Works in Expo Go** for testing; APK build for full background recording
 
 ### 🖥️ Web Dashboard
+
 - **Meeting list** with status tracking (`uploaded` → `needs_naming` → `processing` → `done`/`error`)
 - **Speaker naming UI** with audio clip playback
 - **Delete individual meetings** or bulk-delete errors
@@ -56,6 +52,7 @@ Arc is a local-first personal meeting intelligence system. Android records meeti
 - **Landing page**
 
 ### ⚙️ Pipeline (Laptop, fully local)
+
 - **ffmpeg normalization** → WAV 16kHz mono
 - **whisper-cli.exe** (whisper.cpp CUDA) transcription — Hinglish support
 - **pyannote speaker diarization** (fault-tolerant, degrades to single speaker)
@@ -65,6 +62,7 @@ Arc is a local-first personal meeting intelligence system. Android records meeti
 - **SQLite state machine**: `uploaded` → `needs_naming` → `processing` → `done`/`error`
 
 ### 💬 Arc Chat (RAG Chat Interface)
+
 - **Claude.ai-style chat UI** on the web dashboard
 - **Obsidian vault** as knowledge base (BM25 keyword search with score threshold)
 - **Strict RAG** — answers only from your notes ("*I don't have notes on that topic.*" when no relevant content is found)
@@ -81,16 +79,19 @@ Arc is a local-first personal meeting intelligence system. Android records meeti
 
 ## 🏗️ Architecture
 
-Arc uses a distributed local-first architecture optimized for single-GPU setups (e.g. laptop with RTX 4050 6GB VRAM) where VRAM constraints prevent running pyannote and llama-server simultaneously. 
+Arc uses a distributed local-first architecture optimized for single-GPU setups (e.g. laptop with RTX 4050 6GB VRAM) where VRAM constraints prevent running pyannote and llama-server simultaneously.
 
 ### Core Components
+
 - **mobile/**: React Native Expo SDK 54 app (bare workflow pending prebuild) handling low-power background recording and local WiFi transmission.
 - **server/**: FastAPI server running on the laptop, serving endpoints, the web UI dashboard, and coordinate workflows.
 - **server/chat/**: RAG engine, chat routes, file processor, and streaming engine.
 - **server/pipeline/**: Sequential ML steps ensuring that only one model occupies the GPU at a time.
 
 ### Required Services
+
 The system coordinates three running processes:
+
 1. **FastAPI server** (`:8000`): Main API, dashboard UI, and file ingestion.
 2. **llama-server** (`:8081`): Serves Gemma 4 for transcription (llamacpp) and note generation.
 3. **Obsidian MCP server** (`:3100`): Allows write and query access to the Obsidian vault.
@@ -242,6 +243,7 @@ $env:PYTHONPATH="server"; .venv\Scripts\uvicorn.exe server.main:app --host 0.0.0
 ```
 
 Open these local URLs to interact with Arc:
+
 - **Web Dashboard**: `http://localhost:8000`
 - **Arc Chat Interface**: `http://localhost:8000/chat`
 - **QR Pairing Page**: `http://localhost:8000/qr`
@@ -269,9 +271,11 @@ npx expo prebuild --platform android
 
 - **Windows Path Safety**: Always use `pathlib.Path` for all filesystem operations. Never hardcode `/` or `\` path separators.
 - **ffmpeg Subprocesses**: Never run ffmpeg with `shell=True`. Always pass arguments as a list of strings:
+
   ```python
   subprocess.run(["ffmpeg", "-y", "-i", str(input_path), "-ar", "16000", "-ac", "1", str(output_path)], check=True)
   ```
+
 - **SQLite Concurrency**: Always open connection with WAL mode and `check_same_thread=False` to handle concurrent access from both server and watcher. All queries must be parameterized to prevent SQL injection.
 - **Audio Deletion Safe Guards**: Audio is never auto-deleted. Deleting raw audio requires explicit `DELETE /meeting/{id}/audio`. Verify paths with `Path.resolve()` to ensure target file is a descendant of `ARC_TEMP_DIR` to prevent path traversal vulnerability.
 - **llama-server Connectivity**: Validate llama-server availability before starting note generation. If down, immediately fail the pipeline with status `error`.

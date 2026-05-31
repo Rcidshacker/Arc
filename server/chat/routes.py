@@ -198,9 +198,9 @@ async def send_message(
     vault_context, sources = format_context(matched)
     has_context = bool(matched)
 
-    system_prompt = build_system_prompt(vault_context, has_context, internet)
     thinking = thinking_enabled.lower() not in ("false", "0", "no")
     internet = internet_enabled.lower() not in ("false", "0", "no")
+    system_prompt = build_system_prompt(vault_context, has_context, internet)
 
     async def _generate():
         thinking_acc: list[str] = []
