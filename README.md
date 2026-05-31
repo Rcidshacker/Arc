@@ -1,3 +1,10 @@
+![Python](https://img.shields.io/badge/Python-3.13-blue?logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)
+![React Native](https://img.shields.io/badge/React_Native-Expo_54-000?logo=expo)
+![llama.cpp](https://img.shields.io/badge/llama.cpp-Gemma_4-orange)
+![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?logo=sqlite)
+![License](https://img.shields.io/badge/License-MIT-green)
+
 <div align="center">
 
 # 🌌 Arc
@@ -16,6 +23,14 @@
 ---
 
 Arc is a local-first personal meeting intelligence system. Android records meetings (even with screen off) → uploads to a FastAPI laptop server over WiFi → sequential ML pipeline (ffmpeg → whisper-cli.exe → pyannote → Gemma 4 via llama-server) → structured Obsidian vault note in under 10 minutes. Zero cloud. Zero cost. Single user.
+
+---
+
+## Demo
+
+[![Arc Demo](https://drive.google.com/thumbnail?id=1Xt2tfoRPHtC-QkOEbvwLUwCtFaM4UP7v&sz=w1280)](https://drive.google.com/file/d/1Xt2tfoRPHtC-QkOEbvwLUwCtFaM4UP7v/view?usp=sharing)
+
+> 📹 Click to watch the full demo — phone recording → pipeline → Obsidian note → Arc Chat
 
 ---
 
