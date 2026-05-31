@@ -48,6 +48,8 @@ TEMPLATES_DIR = SERVER_DIR / "templates"
 # Lazy imports — pipeline modules live alongside this file
 # ---------------------------------------------------------------------------
 
+from chat.routes import router as chat_router  # noqa: E402
+
 from database import (  # noqa: E402 – must come after env load
     create_meeting,
     get_all_meetings,
@@ -90,6 +92,8 @@ CLIPS_DIR.mkdir(parents=True, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+app.include_router(chat_router)
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +184,14 @@ def _start_watcher() -> None:
 # ---------------------------------------------------------------------------
 
 @app.post("/upload")
-async def upload_audio(file: UploadFile = File(...)) -> JSONResponse:
+async def upload_audio(
+    file: UploadFile = File(...),
+    source: str = Form("web"),
+    user_name: Optional[str] = Form(None),
+    device_id: Optional[str] = Form(None),
+    recorded_at: Optional[str] = Form(None),
+    duration_seconds: Optional[str] = Form(None),
+) -> JSONResponse:
     content = await file.read()
     sha256 = _sha256_of_bytes(content)
 
@@ -203,6 +214,10 @@ async def upload_audio(file: UploadFile = File(...)) -> JSONResponse:
             filename=file.filename or stored_name,
             sha256_hash=sha256,
             audio_path=str(dest),
+            source=source,
+            user_name=user_name or None,
+            device_id=device_id or None,
+            recorded_at=recorded_at or None,
         )
         log_upload(conn, sha256, file.filename or stored_name, accepted=True)
 
@@ -287,6 +302,59 @@ async def delete_audio(meeting_id: str) -> JSONResponse:
     return JSONResponse(status_code=200, content=_ok(None))
 
 
+@app.delete("/meeting/{meeting_id}")
+async def delete_meeting(meeting_id: str) -> JSONResponse:
+    with get_db(ARC_DB_PATH) as conn:
+        meeting = get_meeting(conn, meeting_id)
+        if not meeting:
+            return _err("not found", status_code=404)
+
+        # Delete audio from intake/ if still present
+        audio_path_str = meeting.get("audio_path")
+        if audio_path_str:
+            candidate = Path(audio_path_str).resolve()
+            try:
+                candidate.relative_to(ARC_INTAKE_DIR.resolve())
+                if candidate.exists():
+                    candidate.unlink()
+            except ValueError:
+                pass  # not in intake/ — already moved or invalid, skip
+
+        # Delete normalized WAV from temp/
+        temp_path_str = meeting.get("temp_path")
+        if temp_path_str:
+            candidate = (ARC_TEMP_DIR / Path(temp_path_str).name).resolve()
+            try:
+                candidate.relative_to(ARC_TEMP_DIR.resolve())
+                if candidate.exists():
+                    candidate.unlink()
+            except ValueError:
+                pass  # path traversal attempt, skip
+
+        # Delete Obsidian vault folder
+        note_rel = meeting.get("obsidian_note_path")
+        if note_rel:
+            vault_folder = (OBSIDIAN_VAULT_PATH / note_rel).resolve()
+            try:
+                vault_folder.relative_to(OBSIDIAN_VAULT_PATH.resolve())
+                if vault_folder.exists():
+                    shutil.rmtree(vault_folder, ignore_errors=True)
+            except ValueError:
+                pass  # path traversal attempt, skip
+
+        # Delete child rows first (FK constraints), then the meeting row
+        sha256 = meeting.get("sha256_hash")
+        conn.execute("DELETE FROM transcript_segments WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM meeting_speakers WHERE meeting_id = ?", (meeting_id,))
+        conn.execute("DELETE FROM meeting_concepts WHERE meeting_id = ?", (meeting_id,))
+        if sha256:
+            conn.execute("DELETE FROM upload_log WHERE sha256_hash = ?", (sha256,))
+        conn.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
+        conn.commit()
+
+    return JSONResponse(status_code=200, content=_ok(None))
+
+
 @app.post("/speaker/name")
 async def name_speakers(
     request: Request,
@@ -342,9 +410,13 @@ async def name_speakers(
 async def dashboard(request: Request) -> HTMLResponse:
     with get_db(ARC_DB_PATH) as conn:
         meetings = get_all_meetings(conn)
+    phone_active = [
+        m for m in meetings
+        if m.get("source") == "phone" and m.get("status") in ("uploaded", "processing")
+    ]
     return templates.TemplateResponse(
         "dashboard.html",
-        {"request": request, "meetings": meetings},
+        {"request": request, "meetings": meetings, "phone_active": phone_active},
     )
 
 

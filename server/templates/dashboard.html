@@ -46,11 +46,23 @@
 
   <!-- ─── Meetings List ─────────────────────────────────────────────────── -->
   <section aria-label="Meetings">
+    {% if phone_active %}
+    <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:10px 16px;margin-bottom:16px;" id="phone-banner">
+      {% for m in phone_active %}
+      <span style="color:#f59e0b;font-size:14px;">📱 Recording from {{ m.user_name or 'Phone' }} — processing...</span>{% if not loop.last %}<br>{% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="page-header">
       <div>
         <p class="section-label">All meetings</p>
         <h1 class="page-title">Meetings</h1>
       </div>
+      <button id="delete-all-errors-btn" class="btn btn-sm" onclick="deleteAllErrors()"
+        style="color:#ef4444;border-color:rgba(239,68,68,0.4);{% if not (meetings | selectattr('status', 'equalto', 'error') | list) %}display:none;{% endif %}">
+        Delete All Errors
+      </button>
     </div>
 
     {% if meetings %}
@@ -60,6 +72,7 @@
           <thead>
             <tr>
               <th style="padding-left: 16px;">Filename</th>
+              <th>From</th>
               <th>Date</th>
               <th>Duration</th>
               <th>Status</th>
@@ -74,17 +87,26 @@
               <td class="td-filename" style="padding-left: 16px; max-width: 280px;">
                 {% if meeting.status == 'done' %}
                   <a href="/meeting/{{ meeting.id }}" style="color: var(--text-primary); font-weight:500;">
-                    {{ meeting.filename }}
+                    {% if meeting.source == 'phone' %}📱 {% endif %}{{ meeting.filename }}
                   </a>
                 {% else %}
-                  {{ meeting.filename }}
+                  {% if meeting.source == 'phone' %}📱 {% endif %}{{ meeting.filename }}
+                {% endif %}
+              </td>
+
+              <!-- From -->
+              <td class="td-secondary">
+                {% if meeting.source == 'phone' %}
+                  <span style="background:rgba(99,102,241,0.15);color:#6366f1;font-size:11px;padding:2px 8px;border-radius:6px;white-space:nowrap;">📱 {{ meeting.user_name or 'Phone' }}</span>
+                {% else %}
+                  <span style="color:var(--text-secondary,#888);font-size:12px;">Web</span>
                 {% endif %}
               </td>
 
               <!-- Date -->
               <td class="td-secondary">
-                <span data-upload-time="{{ meeting.upload_time }}">
-                  {{ meeting.upload_time }}
+                <span data-upload-time="{{ meeting.recorded_at or meeting.upload_time }}">
+                  {{ meeting.recorded_at or meeting.upload_time }}
                 </span>
               </td>
 
@@ -130,12 +152,19 @@
 
               <!-- Actions -->
               <td style="text-align: right; padding-right: 16px;">
+                <span class="delete-err" style="color:#ef4444;font-size:12px;margin-right:8px;"></span>
                 {% if meeting.status == 'done' %}
-                  <a href="/meeting/{{ meeting.id }}" class="btn btn-sm">View</a>
+                  <a href="/meeting/{{ meeting.id }}" class="btn btn-sm" style="margin-right:6px;">View</a>
+                  <button class="btn btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.4);" onclick="deleteMeeting('{{ meeting.id }}','done')">Delete</button>
                 {% elif meeting.status == 'needs_naming' %}
-                  <a href="/naming/{{ meeting.id }}" class="btn btn-sm" style="color: var(--warning); border-color: rgba(245,158,11,0.35);">Name</a>
+                  <a href="/naming/{{ meeting.id }}" class="btn btn-sm" style="color:var(--warning);border-color:rgba(245,158,11,0.35);margin-right:6px;">Name</a>
+                  <button class="btn btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.4);" onclick="deleteMeeting('{{ meeting.id }}','needs_naming')">Delete</button>
+                {% elif meeting.status == 'processing' or meeting.status == 'uploaded' %}
+                  <button class="btn btn-sm" style="color:#f59e0b;border-color:rgba(245,158,11,0.4);" onclick="deleteMeeting('{{ meeting.id }}','{{ meeting.status }}')">Cancel &amp; Delete</button>
+                {% elif meeting.status == 'error' %}
+                  <button class="btn btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.4);" onclick="deleteMeeting('{{ meeting.id }}','error')">Delete</button>
                 {% else %}
-                  <span style="color: var(--text-secondary); font-size: 12px;">—</span>
+                  <button class="btn btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.4);" onclick="deleteMeeting('{{ meeting.id }}','{{ meeting.status }}')">Delete</button>
                 {% endif %}
               </td>
             </tr>
@@ -271,9 +300,9 @@
     // Duration cell (update if it was previously empty)
     if (durationSeconds) {
       var cells = row.querySelectorAll('td');
-      // duration is the 3rd td (index 2)
-      if (cells[2] && cells[2].textContent.trim() === '—') {
-        cells[2].textContent = formatDuration(durationSeconds);
+      // duration is the 5th td (index 4, after From column added at index 1)
+      if (cells[4] && cells[4].textContent.trim() === '—') {
+        cells[4].textContent = formatDuration(durationSeconds);
       }
     }
 
@@ -284,10 +313,13 @@
         var text = filenameCell.textContent.trim();
         filenameCell.innerHTML = '<a href="/meeting/' + id + '" style="color:var(--text-primary);font-weight:500;">' + escapeHtml(text) + '</a>';
       }
-      // Update actions cell
-      var actionCell = row.cells[4];
+      // Update actions cell (index 5 after From column added at index 1)
+      var actionCell = row.cells[5];
       if (actionCell) {
-        actionCell.innerHTML = '<a href="/meeting/' + id + '" class="btn btn-sm">View</a>';
+        actionCell.innerHTML =
+          '<span class="delete-err" style="color:#ef4444;font-size:12px;margin-right:8px;"></span>' +
+          '<a href="/meeting/' + escapeAttr(id) + '" class="btn btn-sm" style="margin-right:6px;">View</a>' +
+          '<button class="btn btn-sm" style="color:#ef4444;border-color:rgba(239,68,68,0.4);" onclick="deleteMeeting(\'' + escapeAttr(id) + '\',\'done\')">Delete</button>';
       }
     }
   }
@@ -403,6 +435,72 @@
   /* Prevent drag events on the whole page from opening browser file viewer */
   document.addEventListener('dragover', function (e) { e.preventDefault(); });
   document.addEventListener('drop', function (e) { e.preventDefault(); });
+
+  /* ── Delete actions ──────────────────────────────────────────────────── */
+
+  function deleteMeeting(id, status) {
+    var isActive = status === 'processing' || status === 'uploaded';
+    var msg = isActive
+      ? 'Cancel processing and delete this recording?'
+      : 'Delete this recording? This cannot be undone.';
+    if (!confirm(msg)) return;
+
+    var row = document.querySelector('tr[data-meeting-id="' + id + '"]');
+
+    fetch('/meeting/' + id, { method: 'DELETE' })
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+        return r.json();
+      })
+      .then(function (body) {
+        if (body.success) {
+          row.style.transition = 'opacity 0.4s';
+          row.style.opacity = '0';
+          setTimeout(function () {
+            row.remove();
+            updateDeleteAllErrorsVisibility();
+          }, 400);
+        } else {
+          var errSpan = row.querySelector('.delete-err');
+          if (errSpan) errSpan.textContent = body.error || 'Delete failed.';
+        }
+      })
+      .catch(function (err) {
+        var errSpan = row && row.querySelector('.delete-err');
+        if (errSpan) errSpan.textContent = err.message || 'Network error.';
+      });
+  }
+
+  function deleteAllErrors() {
+    var rows = document.querySelectorAll('tr[data-status="error"]');
+    var count = rows.length;
+    if (!count) return;
+    if (!confirm('Delete all ' + count + ' errored recording' + (count === 1 ? '' : 's') + '?')) return;
+
+    rows.forEach(function (row) {
+      var id = row.getAttribute('data-meeting-id');
+      fetch('/meeting/' + id, { method: 'DELETE' })
+        .then(function (res) { return res.json(); })
+        .then(function (body) {
+          if (body.success) {
+            row.style.transition = 'opacity 0.4s';
+            row.style.opacity = '0';
+            setTimeout(function () {
+              row.remove();
+              updateDeleteAllErrorsVisibility();
+            }, 400);
+          }
+        })
+        .catch(function () {});
+    });
+  }
+
+  function updateDeleteAllErrorsVisibility() {
+    var btn = document.getElementById('delete-all-errors-btn');
+    if (!btn) return;
+    var errorRows = document.querySelectorAll('tr[data-status="error"]');
+    btn.style.display = errorRows.length ? '' : 'none';
+  }
 
 })();
 </script>

@@ -5,7 +5,18 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  LayoutChangeEvent,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  withSpring,
+  withSequence,
+  cancelAnimation,
+  Easing,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import type { StackScreenProps } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
@@ -47,6 +58,153 @@ function formatBytes(bytes: number): string {
   if (bytes < 1048576) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
+
+// ---------------------------------------------------------------------------
+// Per-file animated card
+// ---------------------------------------------------------------------------
+
+function UploadFileCard({
+  f,
+  onRetry,
+  uploading,
+}: {
+  f: FileState;
+  onRetry: () => void;
+  uploading: boolean;
+}): React.JSX.Element {
+  const packetX = useSharedValue(-30);
+  const checkScale = useSharedValue(0);
+  const [barWidth, setBarWidth] = useState(0);
+
+  useEffect(() => {
+    if (f.status === 'uploading' && barWidth > 0) {
+      packetX.value = -30;
+      packetX.value = withRepeat(
+        withTiming(barWidth + 10, { duration: 1400, easing: Easing.linear }),
+        -1,
+        false,
+      );
+    } else {
+      cancelAnimation(packetX);
+      packetX.value = -30;
+    }
+
+    if (f.status === 'done' && checkScale.value < 1) {
+      checkScale.value = withSpring(1, { damping: 8, stiffness: 150 });
+    }
+  }, [f.status, barWidth]);
+
+  const packetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: packetX.value }],
+    opacity: f.status === 'uploading' ? 0.55 : 0,
+  }));
+
+  const checkStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkScale.value }],
+  }));
+
+  const date = new Date(f.rec.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+  return (
+    <View style={styles.fileCard}>
+      <View style={styles.fileHeader}>
+        <Text style={styles.fileLabel} numberOfLines={1}>
+          {formatDuration(f.rec.duration)} · {date}
+        </Text>
+        <View style={styles.statusIcon}>
+          {f.status === 'pending' && <Ionicons name="time-outline" size={16} color={Colors.textMuted} />}
+          {f.status === 'uploading' && <Ionicons name="cloud-upload-outline" size={16} color={Colors.accent} />}
+          {f.status === 'done' && (
+            <Animated.View style={checkStyle}>
+              <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+            </Animated.View>
+          )}
+          {f.status === 'error' && <Ionicons name="close-circle" size={16} color={Colors.error} />}
+        </View>
+      </View>
+
+      <View
+        style={styles.progressTrack}
+        onLayout={(e: LayoutChangeEvent) => setBarWidth(e.nativeEvent.layout.width)}
+      >
+        <View
+          style={[
+            styles.progressFill,
+            {
+              width: `${f.progress}%` as any,
+              backgroundColor:
+                f.status === 'error' ? Colors.error
+                  : f.status === 'done' ? Colors.success
+                  : Colors.accent,
+            },
+          ]}
+        />
+        {/* Packet stripe */}
+        <Animated.View style={[styles.packet, packetStyle]} />
+      </View>
+
+      <View style={styles.statusLine}>
+        {f.status === 'uploading' && (
+          <>
+            <Text style={styles.statusText}>{f.progress}% · {formatBytes(f.loaded)}</Text>
+            {f.eta !== null && <Text style={styles.etaText}>{formatEta(f.eta)}</Text>}
+          </>
+        )}
+        {f.status === 'done' && (
+          <Text style={[styles.statusText, { color: Colors.success }]}>Uploaded</Text>
+        )}
+        {f.status === 'error' && (
+          <View style={styles.errorRow}>
+            <Text style={[styles.statusText, { color: Colors.error, flex: 1 }]} numberOfLines={1}>
+              {f.error}
+            </Text>
+            <TouchableOpacity onPress={onRetry} disabled={uploading}>
+              <Text style={[styles.retryText, uploading && { opacity: 0.4 }]}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Celebration header
+// ---------------------------------------------------------------------------
+
+function CelebrationHeader(): React.JSX.Element {
+  const titleOpacity = useSharedValue(0);
+  const titleScale = useSharedValue(0.92);
+
+  useEffect(() => {
+    titleOpacity.value = withTiming(1, { duration: 400 });
+    titleScale.value = withSpring(1, { damping: 12 });
+    // Brief shimmer pulse
+    setTimeout(() => {
+      titleOpacity.value = withRepeat(
+        withSequence(withTiming(0.7, { duration: 400 }), withTiming(1, { duration: 400 })),
+        3,
+        false,
+      );
+    }, 500);
+  }, []);
+
+  const titleStyle = useAnimatedStyle(() => ({
+    opacity: titleOpacity.value,
+    transform: [{ scale: titleScale.value }],
+  }));
+
+  return (
+    <View style={styles.celebrationBlock}>
+      <Animated.Text style={[styles.celebrationTitle, titleStyle]}>All sent to Arc</Animated.Text>
+      <Text style={styles.celebrationSub}>Your laptop is processing the recordings</Text>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main screen
+// ---------------------------------------------------------------------------
 
 export function UploadProgressScreen({ route, navigation }: Props): React.JSX.Element {
   const { recordingIds, serverUrl } = route.params;
@@ -112,10 +270,8 @@ export function UploadProgressScreen({ route, navigation }: Props): React.JSX.El
         const delta = p.loaded - lastLoaded;
         lastLoaded = p.loaded;
         speedWindowRef.current.push({ ts: Date.now(), bytes: delta });
-
         const remaining = p.total - p.loaded;
         const eta = computeEta(remaining);
-
         setFiles((prev) => prev.map((f) =>
           f.rec.id === rec.id
             ? { ...f, progress: p.percent, loaded: p.loaded, total: p.total, eta }
@@ -124,7 +280,10 @@ export function UploadProgressScreen({ route, navigation }: Props): React.JSX.El
       };
 
       const uri = typeof source === 'string' ? source : URL.createObjectURL(source as Blob);
-      const result = await uploadAudio(uri, serverUrl, onProgress);
+      const result = await uploadAudio(uri, serverUrl, onProgress, {
+        recordedAt: rec.createdAt,
+        duration: rec.duration,
+      });
 
       setFiles((prev) => prev.map((f) =>
         f.rec.id === rec.id
@@ -161,63 +320,27 @@ export function UploadProgressScreen({ route, navigation }: Props): React.JSX.El
           </TouchableOpacity>
         </View>
       )}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>
-          {allDone
-            ? 'All done'
-            : files.length > 0
+
+      {allDone ? (
+        <CelebrationHeader />
+      ) : (
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>
+            {files.length > 0
               ? `Sending ${currentUploading > 0 ? currentUploading : '…'} of ${files.length}`
               : 'Preparing…'}
-        </Text>
-      </View>
+          </Text>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.list}>
         {files.map((f) => (
-          <View key={f.rec.id} style={styles.fileCard}>
-            <View style={styles.fileHeader}>
-              <Text style={styles.fileLabel} numberOfLines={1}>
-                {formatDuration(f.rec.duration)} · {new Date(f.rec.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-              </Text>
-              <View style={styles.statusIcon}>
-                {f.status === 'pending' && <Ionicons name="time-outline" size={16} color={Colors.textMuted} />}
-                {f.status === 'uploading' && <Ionicons name="cloud-upload-outline" size={16} color={Colors.accent} />}
-                {f.status === 'done' && <Ionicons name="checkmark-circle" size={16} color={Colors.success} />}
-                {f.status === 'error' && <Ionicons name="close-circle" size={16} color={Colors.error} />}
-              </View>
-            </View>
-
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${f.progress}%` as any,
-                    backgroundColor: f.status === 'error' ? Colors.error : f.status === 'done' ? Colors.success : Colors.accent,
-                  },
-                ]}
-              />
-            </View>
-
-            <View style={styles.statusLine}>
-              {f.status === 'uploading' && (
-                <>
-                  <Text style={styles.statusText}>{f.progress}% · {formatBytes(f.loaded)}</Text>
-                  {f.eta !== null && <Text style={styles.etaText}>{formatEta(f.eta)}</Text>}
-                </>
-              )}
-              {f.status === 'done' && (
-                <Text style={[styles.statusText, { color: Colors.success }]}>Uploaded</Text>
-              )}
-              {f.status === 'error' && (
-                <View style={styles.errorRow}>
-                  <Text style={[styles.statusText, { color: Colors.error, flex: 1 }]} numberOfLines={1}>{f.error}</Text>
-                  <TouchableOpacity onPress={() => handleRetry(f.rec)} disabled={uploading}>
-                    <Text style={[styles.retryText, uploading && { opacity: 0.4 }]}>Retry</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          </View>
+          <UploadFileCard
+            key={f.rec.id}
+            f={f}
+            onRetry={() => handleRetry(f.rec)}
+            uploading={uploading}
+          />
         ))}
       </ScrollView>
 
@@ -236,40 +359,89 @@ export function UploadProgressScreen({ route, navigation }: Props): React.JSX.El
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
+
   header: {
     paddingTop: 60, paddingBottom: 20, paddingHorizontal: 24,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   headerTitle: {
-    color: Colors.text, fontSize: Typography.size.xl,
-    fontFamily: Typography.family.bold,
+    color: Colors.text, fontSize: Typography.size.xl, fontFamily: Typography.family.bold,
   },
+
+  celebrationBlock: {
+    paddingTop: 60, paddingBottom: 20, paddingHorizontal: 24,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  celebrationTitle: {
+    color: Colors.success, fontSize: Typography.size.xl,
+    fontFamily: Typography.family.bold, marginBottom: 6,
+  },
+  celebrationSub: {
+    color: Colors.textMuted, fontSize: Typography.size.sm, fontFamily: Typography.family.ui,
+  },
+
   list: { padding: 16 },
+
   fileCard: {
     backgroundColor: Colors.bgElevated, borderRadius: 12,
     padding: 14, marginBottom: 10,
     borderWidth: 1, borderColor: Colors.border,
   },
-  fileHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  fileLabel: { color: Colors.text, fontSize: Typography.size.sm, fontFamily: Typography.family.ui, flex: 1, marginRight: 8 },
+  fileHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 10,
+  },
+  fileLabel: {
+    color: Colors.text, fontSize: Typography.size.sm,
+    fontFamily: Typography.family.ui, flex: 1, marginRight: 8,
+  },
   statusIcon: { width: 20, alignItems: 'center' },
-  progressTrack: { height: 3, backgroundColor: Colors.border, borderRadius: 2, overflow: 'hidden', marginBottom: 8 },
+
+  progressTrack: {
+    height: 4, backgroundColor: Colors.border,
+    borderRadius: 2, overflow: 'hidden', marginBottom: 8,
+  },
   progressFill: { height: '100%', borderRadius: 2 },
-  statusLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  statusText: { color: Colors.textMuted, fontSize: Typography.size.xs, fontFamily: Typography.family.mono },
-  etaText: { color: Colors.textMuted, fontSize: Typography.size.xs, fontFamily: Typography.family.mono },
+  packet: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 28,
+    height: '100%',
+    backgroundColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 2,
+  },
+
+  statusLine: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+  },
+  statusText: {
+    color: Colors.textMuted, fontSize: Typography.size.xs, fontFamily: Typography.family.mono,
+  },
+  etaText: {
+    color: Colors.textMuted, fontSize: Typography.size.xs, fontFamily: Typography.family.mono,
+  },
   errorRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  retryText: { color: Colors.accent, fontSize: Typography.size.xs, fontFamily: Typography.family.bold, marginLeft: 8 },
+  retryText: {
+    color: Colors.accent, fontSize: Typography.size.xs,
+    fontFamily: Typography.family.bold, marginLeft: 8,
+  },
+
   doneButton: {
     marginHorizontal: 16, marginBottom: 32, backgroundColor: Colors.accent,
     borderRadius: 14, paddingVertical: 16, alignItems: 'center',
   },
-  doneButtonText: { color: Colors.text, fontSize: Typography.size.base, fontFamily: Typography.family.bold },
+  doneButtonText: {
+    color: Colors.text, fontSize: Typography.size.base, fontFamily: Typography.family.bold,
+  },
   errorBanner: {
     margin: 16, padding: 14, backgroundColor: Colors.bgElevated,
     borderRadius: 12, borderWidth: 1, borderColor: Colors.error,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  errorBannerText: { color: Colors.error, fontSize: Typography.size.sm, fontFamily: Typography.family.ui, flex: 1 },
+  errorBannerText: {
+    color: Colors.error, fontSize: Typography.size.sm,
+    fontFamily: Typography.family.ui, flex: 1,
+  },
   errorBackBtn: { marginLeft: 12 },
 });

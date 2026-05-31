@@ -1,0 +1,17 @@
+INFO:     Will watch for changes in these directories: ['C:\\Users\\Lenovo\\Desktop\\Code\\2026\\Arc']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [27388] using WatchFiles
+INFO:     Started server process [22920]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+C:\Users\Lenovo\Desktop\Code\2026\Arc\.venv\Lib\site-packages\pyannote\audio\utils\reproducibility.py:74: ReproducibilityWarning: TensorFloat-32 (TF32) has been disabled as it might lead to reproducibility issues and lower accuracy.
+It can be re-enabled by calling
+   >>> import torch
+   >>> torch.backends.cuda.matmul.allow_tf32 = True
+   >>> torch.backends.cudnn.allow_tf32 = True
+See https://github.com/pyannote/pyannote-audio/issues/1370 for more details.
+
+  warnings.warn(
+align_segments called with empty diarization_segments; all segments will be labelled UNKNOWN.
+MCP note.md write failed — falling back to direct write.
+[Arc watcher] WARNING: no meeting record found for 6ffc0bbc-5b79-4fc5-b8be-a5a714d6d919.webm; skipping.

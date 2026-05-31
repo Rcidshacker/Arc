@@ -8,6 +8,14 @@ import {
   FlatList,
   ActivityIndicator,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  cancelAnimation,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { StackScreenProps } from '@react-navigation/stack';
@@ -38,6 +46,8 @@ export function SelectAndSendScreen({ route, navigation }: Props): React.JSX.Ele
   const [serverUrl, setServerUrlState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const pairPulse = useSharedValue(1);
+
   useEffect(() => {
     async function load(): Promise<void> {
       try {
@@ -56,8 +66,29 @@ export function SelectAndSendScreen({ route, navigation }: Props): React.JSX.Ele
     getServerUrl().then(setServerUrlState).catch(() => {});
   }, []));
 
+  // Pulse the pair button when no URL
+  useEffect(() => {
+    if (serverUrl === null) {
+      pairPulse.value = withRepeat(
+        withSequence(
+          withTiming(1.06, { duration: 600 }),
+          withTiming(1, { duration: 600 }),
+        ),
+        -1,
+        false,
+      );
+    } else {
+      cancelAnimation(pairPulse);
+      pairPulse.value = 1;
+    }
+  }, [serverUrl]);
+
+  const pairBtnStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pairPulse.value }],
+  }));
+
   function handlePair(): void {
-    navigation.navigate('QRScan');
+    navigation.navigate('QRScan', { mode: 'repairFromSend' });
   }
 
   function handleSend(): void {
@@ -84,7 +115,7 @@ export function SelectAndSendScreen({ route, navigation }: Props): React.JSX.Ele
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Recordings list (read-only) */}
+      {/* Recordings list */}
       <FlatList
         data={recordings}
         keyExtractor={(r) => r.id}
@@ -108,10 +139,20 @@ export function SelectAndSendScreen({ route, navigation }: Props): React.JSX.Ele
             {serverUrl ?? 'Not connected'}
           </Text>
         </View>
-        <TouchableOpacity style={styles.pairBtn} onPress={handlePair}>
-          <Text style={styles.pairBtnText}>{serverUrl !== null ? 'Change' : 'Pair →'}</Text>
-        </TouchableOpacity>
+        <Animated.View style={pairBtnStyle}>
+          <TouchableOpacity style={styles.pairBtn} onPress={handlePair} testID="pair-btn">
+            <Text style={styles.pairBtnText}>{serverUrl !== null ? 'Change' : 'Pair →'}</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </View>
+
+      {/* Connect required message */}
+      {serverUrl === null && (
+        <View style={styles.connectNotice}>
+          <Ionicons name="wifi-outline" size={16} color={Colors.textMuted} />
+          <Text style={styles.connectNoticeText}>Connect to your laptop first</Text>
+        </View>
+      )}
 
       {/* Send button */}
       <TouchableOpacity
@@ -119,6 +160,7 @@ export function SelectAndSendScreen({ route, navigation }: Props): React.JSX.Ele
         onPress={handleSend}
         disabled={serverUrl === null}
         activeOpacity={0.85}
+        testID="send-btn"
       >
         <Text style={styles.sendButtonText}>
           Send {recordingIds.length} recording{recordingIds.length > 1 ? 's' : ''}
@@ -149,13 +191,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginHorizontal: 16, padding: 14,
     backgroundColor: Colors.bgElevated, borderRadius: 12,
-    borderWidth: 1, borderColor: Colors.border, marginBottom: 12,
+    borderWidth: 1, borderColor: Colors.border, marginBottom: 8,
   },
   serverInfo: { flex: 1, marginRight: 12 },
   serverLabel: { color: Colors.textMuted, fontSize: Typography.size.xs, fontFamily: Typography.family.ui, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 },
   serverUrl: { color: Colors.text, fontSize: Typography.size.sm, fontFamily: Typography.family.mono },
   pairBtn: { backgroundColor: Colors.accentDim, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12 },
   pairBtnText: { color: Colors.accent, fontSize: Typography.size.sm, fontFamily: Typography.family.bold },
+  connectNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+  connectNoticeText: {
+    color: Colors.textMuted,
+    fontSize: Typography.size.sm,
+    fontFamily: Typography.family.ui,
+  },
   sendButton: {
     marginHorizontal: 16, marginBottom: 32, backgroundColor: Colors.accent,
     borderRadius: 14, paddingVertical: 16, alignItems: 'center',

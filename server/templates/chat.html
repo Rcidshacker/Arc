@@ -1,0 +1,1301 @@
+{% extends "base.html" %}
+
+{% block title %}Chat — Arc{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"
+  integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+"
+  crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"
+  integrity="sha384-XQqX/4yiUGu+oyr87jvWzRuqBUK/adrY0DunhL+tID9m/9dwSpV8h9Fk/Sg6ifVQ"
+  crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
+  integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH"
+  crossorigin="anonymous">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
+  integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp"
+  crossorigin="anonymous"></script>
+<style>
+/* ── Chat layout ─────────────────────────────────── */
+main { padding: 0 !important; }
+
+.chat-root {
+  display: flex;
+  height: calc(100vh - var(--header-height));
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ── Sidebar ─────────────────────────────────────── */
+.chat-sidebar {
+  width: 260px;
+  min-width: 260px;
+  background: var(--surface-deep);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  letter-spacing: 0.04em;
+}
+
+.btn-new-chat {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-btn);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background var(--transition);
+}
+
+.btn-new-chat:hover { background: var(--accent-bright); }
+
+.session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.session-item {
+  position: relative;
+  padding: 10px 16px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background var(--transition), border-color var(--transition);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-item:hover { background: var(--surface); }
+
+.session-item.active {
+  background: var(--surface-elevated);
+  border-left-color: var(--accent);
+}
+
+.session-item-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 20px;
+}
+
+.session-item-date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.session-delete {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition);
+  padding: 2px 4px;
+}
+
+.session-item:hover .session-delete { opacity: 1; }
+.session-delete:hover { color: var(--error); }
+
+.session-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ── Main area ───────────────────────────────────── */
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ── Toolbar ─────────────────────────────────────── */
+.chat-toolbar {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+  background: var(--surface);
+}
+
+.effort-pills {
+  display: flex;
+  gap: 4px;
+}
+
+.effort-pill {
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.effort-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.effort-pill:hover:not(.active) {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.toolbar-toggles {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.toggle-btn {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  title: attr(data-tooltip);
+}
+
+.toggle-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+
+.toggle-btn.active {
+  background: var(--accent-glow-soft);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.toggle-btn .pulse-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  display: none;
+  animation: pulse 1.5s infinite;
+}
+
+.toggle-btn.active .pulse-dot { display: block; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── Message area ────────────────────────────────── */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chat-welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  text-align: center;
+  gap: 8px;
+}
+
+.chat-welcome-icon { font-size: 40px; margin-bottom: 8px; }
+.chat-welcome h2 { font-family: var(--font-display); font-size: 18px; color: var(--text-secondary); }
+.chat-welcome p { font-size: 13px; max-width: 320px; }
+
+/* Message bubbles */
+.msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 78%;
+  gap: 6px;
+}
+
+.msg.user { align-self: flex-end; align-items: flex-end; }
+.msg.assistant, .msg.thinking-msg { align-self: flex-start; align-items: flex-start; }
+
+.msg-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.file-chip-display {
+  background: rgba(91,111,214,0.15);
+  border: 1px solid var(--border-accent);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--accent-bright);
+}
+
+.msg-bubble {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.msg.user .msg-bubble {
+  background: var(--accent);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.msg.assistant .msg-bubble {
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  border-bottom-left-radius: 4px;
+  border: 1px solid var(--border);
+  min-width: 200px;
+}
+
+/* Thinking block */
+.thinking-block {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+  max-width: 600px;
+  width: 100%;
+}
+
+.thinking-header {
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+.thinking-header:hover { color: var(--text-secondary); }
+
+.thinking-toggle { font-size: 10px; transition: transform var(--transition); }
+.thinking-block.open .thinking-toggle { transform: rotate(90deg); }
+
+.thinking-body {
+  display: none;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
+.thinking-block.open .thinking-body { display: block; }
+
+/* Sources */
+.msg-sources {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 0 0;
+}
+
+.msg-sources a {
+  color: var(--accent-bright);
+  text-decoration: none;
+  margin-right: 6px;
+}
+
+.msg-sources a:hover { text-decoration: underline; }
+
+/* Save to Obsidian */
+.btn-save-vault {
+  margin-top: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-save-vault:hover { border-color: var(--accent); color: var(--accent-bright); }
+
+/* Streaming cursor */
+.stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent-bright);
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Loading dots */
+.loading-dots {
+  display: flex;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.loading-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: dot-bounce 1.2s ease-in-out infinite;
+}
+
+.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* Markdown inside bubbles */
+.msg-bubble p { margin: 0 0 8px; }
+.msg-bubble p:last-child { margin-bottom: 0; }
+.msg-bubble ul, .msg-bubble ol { margin: 0 0 8px 18px; }
+.msg-bubble code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: rgba(0,0,0,0.3);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.msg-bubble pre {
+  background: var(--surface-deep);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.msg-bubble pre code { background: none; padding: 0; }
+.msg-bubble h1, .msg-bubble h2, .msg-bubble h3 {
+  font-family: var(--font-display);
+  margin: 12px 0 6px;
+  color: var(--text-primary);
+}
+.msg-bubble strong { color: var(--accent-bright); }
+.msg-bubble a { color: var(--accent-bright); }
+.msg.user .msg-bubble code { background: rgba(255,255,255,0.15); }
+.msg.user .msg-bubble pre { background: rgba(0,0,0,0.25); }
+
+/* ── Input area ──────────────────────────────────── */
+.chat-input-wrap {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 12px 20px;
+  flex-shrink: 0;
+}
+
+.file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.file-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.file-chip-remove {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  margin-left: 2px;
+}
+.file-chip-remove:hover { color: var(--error); }
+
+.input-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.btn-attach {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 17px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+
+.btn-attach:hover { border-color: var(--accent); color: var(--accent-bright); }
+
+#chat-input {
+  flex: 1;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  padding: 8px 12px;
+  resize: none;
+  min-height: 38px;
+  max-height: 140px;
+  overflow-y: auto;
+  line-height: 1.5;
+  transition: border-color var(--transition);
+  outline: none;
+}
+
+#chat-input:focus { border-color: var(--accent); }
+#chat-input::placeholder { color: var(--text-muted); }
+
+#send-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition);
+}
+
+#send-btn:hover:not(:disabled) { background: var(--accent-bright); }
+#send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Spinner inside send btn */
+#send-btn .spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Save dialog ─────────────────────────────────── */
+.save-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.save-dialog {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.save-dialog h3 { font-family: var(--font-display); font-size: 15px; color: var(--text-primary); }
+.save-dialog p { font-size: 13px; color: var(--text-secondary); }
+
+.save-dialog input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.save-dialog input:focus { border-color: var(--accent); }
+
+.save-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: all var(--transition);
+}
+
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-bright); }
+.btn-ghost { background: transparent; color: var(--text-secondary); }
+.btn-ghost:hover { border-color: var(--border-accent); color: var(--text-primary); }
+
+.save-success {
+  color: var(--success);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="chat-root">
+
+  <!-- ── Sidebar ────────────────────────────────── -->
+  <aside class="chat-sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">Arc Chat</div>
+      <button class="btn-new-chat" id="new-chat-btn">
+        <span>＋</span> New Chat
+      </button>
+    </div>
+    <div class="session-list" id="session-list">
+      <div class="session-empty" id="session-empty">No conversations yet</div>
+    </div>
+  </aside>
+
+  <!-- ── Main ──────────────────────────────────── -->
+  <div class="chat-main">
+
+    <!-- Toolbar -->
+    <div class="chat-toolbar" id="chat-toolbar">
+      <div class="effort-pills" id="effort-pills">
+        <button class="effort-pill" data-effort="low">Low</button>
+        <button class="effort-pill active" data-effort="medium">Medium</button>
+        <button class="effort-pill" data-effort="high">High</button>
+      </div>
+      <div class="toolbar-toggles">
+        <button class="toggle-btn active" id="think-btn" title="Extended thinking">
+          🧠
+        </button>
+        <button class="toggle-btn" id="internet-btn" title="Web search enabled">
+          🌐
+          <span class="pulse-dot"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div class="chat-messages" id="chat-messages">
+      <div class="chat-welcome" id="welcome-msg">
+        <div class="chat-welcome-icon">◎</div>
+        <h2>Ask about your notes</h2>
+        <p>Start a conversation. Arc searches your Obsidian vault and answers from your own notes.</p>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <div class="chat-input-wrap">
+      <div class="file-chips" id="file-chips" style="display:none;"></div>
+      <div class="input-row">
+        <button class="btn-attach" id="attach-btn" title="Attach file">📎</button>
+        <input type="file" id="file-input" multiple
+          accept="image/*,.pdf,.docx,.txt,.md" style="display:none;">
+        <textarea id="chat-input" rows="1"
+          placeholder="Ask about your notes and meetings…"></textarea>
+        <button id="send-btn" disabled>▶</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Save to Obsidian dialog (hidden) -->
+<div class="save-dialog-overlay" id="save-overlay" style="display:none;">
+  <div class="save-dialog">
+    <h3>💾 Save to Obsidian</h3>
+    <p>Enter a filename for this note:</p>
+    <input type="text" id="save-filename" placeholder="chat-note.md">
+    <div class="save-dialog-actions">
+      <button class="btn-sm btn-ghost" id="save-cancel">Cancel</button>
+      <button class="btn-sm btn-primary" id="save-confirm">Save</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+marked.setOptions({ breaks: true, gfm: true });
+
+// Safe wrapper: parse markdown then sanitize before any innerHTML use
+function renderMd(text) {
+  return DOMPurify.sanitize(marked.parse(text || ''), {
+    USE_PROFILES: { html: true },
+    ALLOWED_TAGS: ['p','br','strong','em','a','ul','ol','li','code','pre','h1','h2','h3','h4',
+                   'blockquote','table','thead','tbody','tr','th','td','span','div','hr'],
+    ALLOWED_ATTR: ['href','title','class','id'],
+  });
+}
+
+class ArcChat {
+  constructor() {
+    this.currentSessionId = null;
+    this.sessions = [];
+    this.effort = 'medium';
+    this.thinkingEnabled = true;
+    this.internetEnabled = false;
+    this.uploadedFiles = []; // {name, file} objects
+    this.isStreaming = false;
+    this._pendingSaveContent = null;
+    this._pendingSaveMsgEl = null;
+  }
+
+  async init() {
+    this._bindUI();
+    await this.loadSessions();
+    const hash = window.location.hash.replace('#', '');
+    if (hash && this.sessions.find(s => s.id === hash)) {
+      await this.loadSession(hash);
+    }
+  }
+
+  _bindUI() {
+    document.getElementById('new-chat-btn').addEventListener('click', () => this.createSession());
+    document.getElementById('send-btn').addEventListener('click', () => this.sendMessage());
+    document.getElementById('attach-btn').addEventListener('click', () => document.getElementById('file-input').click());
+    document.getElementById('file-input').addEventListener('change', e => this._onFilesSelected(e));
+
+    const textarea = document.getElementById('chat-input');
+    textarea.addEventListener('input', () => {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 140) + 'px';
+      document.getElementById('send-btn').disabled = !textarea.value.trim() || this.isStreaming;
+    });
+    textarea.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (!document.getElementById('send-btn').disabled) this.sendMessage();
+      }
+    });
+
+    // Effort pills
+    document.getElementById('effort-pills').addEventListener('click', e => {
+      const pill = e.target.closest('.effort-pill');
+      if (!pill || !this.currentSessionId) return;
+      document.querySelectorAll('.effort-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      this.effort = pill.dataset.effort;
+      this._patchSession({effort: this.effort});
+    });
+
+    // Toggles
+    document.getElementById('think-btn').addEventListener('click', () => {
+      if (!this.currentSessionId) return;
+      this.thinkingEnabled = !this.thinkingEnabled;
+      document.getElementById('think-btn').classList.toggle('active', this.thinkingEnabled);
+      this._patchSession({thinking_enabled: this.thinkingEnabled});
+    });
+    document.getElementById('internet-btn').addEventListener('click', () => {
+      if (!this.currentSessionId) return;
+      this.internetEnabled = !this.internetEnabled;
+      document.getElementById('internet-btn').classList.toggle('active', this.internetEnabled);
+      this._patchSession({internet_enabled: this.internetEnabled});
+    });
+
+    // Save dialog
+    document.getElementById('save-cancel').addEventListener('click', () => this._closeSaveDialog());
+    document.getElementById('save-confirm').addEventListener('click', () => this._confirmSave());
+    document.getElementById('save-overlay').addEventListener('click', e => {
+      if (e.target === document.getElementById('save-overlay')) this._closeSaveDialog();
+    });
+  }
+
+  async loadSessions() {
+    const res = await fetch('/chat/api/sessions');
+    const data = await res.json();
+    this.sessions = data.data || [];
+    this._renderSidebar();
+  }
+
+  async createSession() {
+    const res = await fetch('/chat/api/sessions', {method: 'POST'});
+    const data = await res.json();
+    const session = data.data;
+    this.sessions.unshift(session);
+    this._renderSidebar();
+    await this.loadSession(session.id);
+  }
+
+  async loadSession(id) {
+    this.currentSessionId = id;
+    window.location.hash = id;
+
+    const session = this.sessions.find(s => s.id === id);
+    if (session) {
+      this.effort = session.effort || 'medium';
+      this.thinkingEnabled = !!session.thinking_enabled;
+      this.internetEnabled = !!session.internet_enabled;
+      this._syncToolbar();
+    }
+
+    this._renderSidebar();
+
+    const res = await fetch(`/chat/api/sessions/${id}/messages`);
+    const data = await res.json();
+    const messages = data.data || [];
+
+    const container = document.getElementById('chat-messages');
+    container.innerHTML = '';
+    document.getElementById('welcome-msg') && document.getElementById('welcome-msg').remove();
+
+    if (messages.length === 0) {
+      this._showWelcome();
+    } else {
+      this._groupAndRenderMessages(messages);
+    }
+    this._scrollBottom();
+  }
+
+  _groupAndRenderMessages(messages) {
+    // Group thinking with following assistant
+    const rendered = new Set();
+    for (let i = 0; i < messages.length; i++) {
+      if (rendered.has(i)) continue;
+      const msg = messages[i];
+      if (msg.role === 'user') {
+        this._appendUserMessage(msg.content, [], msg.id);
+        rendered.add(i);
+      } else if (msg.role === 'thinking') {
+        // Find next assistant
+        const nextAsst = messages.slice(i + 1).find(m => m.role === 'assistant');
+        const thinkContent = msg.content;
+        const sources = nextAsst && nextAsst.sources ? JSON.parse(nextAsst.sources) : [];
+        const asstContent = nextAsst ? nextAsst.content : '';
+        this._appendAssistantMessage(asstContent, thinkContent, sources, false);
+        rendered.add(i);
+        if (nextAsst) {
+          const nextIdx = messages.indexOf(nextAsst);
+          rendered.add(nextIdx);
+          i = nextIdx;
+        }
+      } else if (msg.role === 'assistant' && !rendered.has(i)) {
+        const sources = msg.sources ? JSON.parse(msg.sources) : [];
+        this._appendAssistantMessage(msg.content, '', sources, false);
+        rendered.add(i);
+      }
+    }
+  }
+
+  async deleteSession(id, e) {
+    e.stopPropagation();
+    if (!confirm('Delete this conversation?')) return;
+    await fetch(`/chat/api/sessions/${id}`, {method: 'DELETE'});
+    this.sessions = this.sessions.filter(s => s.id !== id);
+    if (this.currentSessionId === id) {
+      this.currentSessionId = null;
+      window.location.hash = '';
+      document.getElementById('chat-messages').innerHTML = '';
+      this._showWelcome();
+    }
+    this._renderSidebar();
+  }
+
+  async _patchSession(patch) {
+    if (!this.currentSessionId) return;
+    await fetch(`/chat/api/sessions/${this.currentSessionId}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(patch),
+    });
+  }
+
+  _syncToolbar() {
+    document.querySelectorAll('.effort-pill').forEach(p => {
+      p.classList.toggle('active', p.dataset.effort === this.effort);
+    });
+    document.getElementById('think-btn').classList.toggle('active', this.thinkingEnabled);
+    document.getElementById('internet-btn').classList.toggle('active', this.internetEnabled);
+  }
+
+  _onFilesSelected(e) {
+    const files = Array.from(e.target.files || []);
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) { alert(`${file.name} exceeds 20MB limit.`); continue; }
+      if (!this.uploadedFiles.find(f => f.name === file.name)) {
+        this.uploadedFiles.push({name: file.name, file});
+      }
+    }
+    e.target.value = '';
+    this._renderFileChips();
+  }
+
+  _renderFileChips() {
+    const wrap = document.getElementById('file-chips');
+    if (this.uploadedFiles.length === 0) {
+      wrap.style.display = 'none';
+      wrap.innerHTML = '';
+      return;
+    }
+    wrap.style.display = 'flex';
+    wrap.innerHTML = this.uploadedFiles.map((f, i) => {
+      const icon = f.name.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? '🖼' : '📄';
+      return `<div class="file-chip">${icon} ${this._esc(f.name)}<span class="file-chip-remove" data-idx="${i}">×</span></div>`;
+    }).join('');
+    wrap.querySelectorAll('.file-chip-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.uploadedFiles.splice(parseInt(btn.dataset.idx), 1);
+        this._renderFileChips();
+      });
+    });
+  }
+
+  async sendMessage() {
+    if (this.isStreaming) return;
+    const textarea = document.getElementById('chat-input');
+    const text = textarea.value.trim();
+    if (!text) return;
+
+    if (!this.currentSessionId) await this.createSession();
+
+    // Hide welcome
+    const welcome = document.getElementById('welcome-msg');
+    if (welcome) welcome.remove();
+
+    // Show user message
+    const fileNames = this.uploadedFiles.map(f => f.name);
+    this._appendUserMessage(text, fileNames);
+
+    // Prepare form data
+    const fd = new FormData();
+    fd.append('message', text);
+    fd.append('effort', this.effort);
+    fd.append('thinking_enabled', this.thinkingEnabled ? 'true' : 'false');
+    fd.append('internet_enabled', this.internetEnabled ? 'true' : 'false');
+    for (const f of this.uploadedFiles) fd.append('files', f.file, f.name);
+
+    // Clear input
+    textarea.value = '';
+    textarea.style.height = 'auto';
+    this.uploadedFiles = [];
+    this._renderFileChips();
+
+    this.isStreaming = true;
+    document.getElementById('send-btn').disabled = true;
+    document.getElementById('send-btn').innerHTML = '<div class="spinner"></div>';
+
+    // Auto-title after first message
+    const isFirst = !document.querySelectorAll('.msg.user').length || document.querySelectorAll('.msg.user').length === 1;
+    if (isFirst) {
+      const titleText = text.slice(0, 40) + (text.length > 40 ? '…' : '');
+      await this._patchSession({title: titleText});
+      const session = this.sessions.find(s => s.id === this.currentSessionId);
+      if (session) session.title = titleText;
+      this._renderSidebar();
+    }
+
+    // Show loading dots
+    const loadingEl = this._appendLoading();
+
+    // Streaming state
+    let thinkingEl = null;
+    let thinkingBodyEl = null;
+    let thinkingContent = '';
+    let bubbleEl = null;
+    let textContent = '';
+    let sourcesArr = [];
+    let firstToken = true;
+
+    try {
+      const response = await fetch(`/chat/api/sessions/${this.currentSessionId}/send`, {
+        method: 'POST',
+        body: fd,
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, {stream: true});
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const raw = line.slice(5).trim();
+          if (!raw || raw === '[DONE]') continue;
+          let data;
+          try { data = JSON.parse(raw); } catch { continue; }
+
+          if (data.type === 'sources') {
+            sourcesArr = data.sources || [];
+          } else if (data.type === 'thinking') {
+            if (firstToken) { loadingEl.remove(); firstToken = false; }
+            if (!thinkingEl) {
+              thinkingEl = this._appendThinkingBlock();
+              thinkingBodyEl = thinkingEl.querySelector('.thinking-body');
+            }
+            thinkingContent += data.delta;
+            thinkingBodyEl.textContent = thinkingContent;
+          } else if (data.type === 'text') {
+            if (firstToken) { loadingEl.remove(); firstToken = false; }
+            if (!bubbleEl) bubbleEl = this._appendAssistantBubble();
+            textContent += data.delta;
+            bubbleEl.innerHTML = renderMd(textContent) + '<span class="stream-cursor"></span>';
+            this._scrollBottom();
+          } else if (data.type === 'done') {
+            if (firstToken) { loadingEl.remove(); firstToken = false; }
+            if (!bubbleEl && textContent === '') {
+              bubbleEl = this._appendAssistantBubble();
+            }
+            if (bubbleEl) {
+              bubbleEl.innerHTML = renderMd(textContent);
+              bubbleEl.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+            }
+            // Sources
+            if (sourcesArr.length > 0) this._appendSources(sourcesArr);
+            // Save to vault button if code block present
+            if (textContent.includes('```')) this._appendSaveButton(textContent);
+          } else if (data.type === 'error') {
+            if (firstToken) { loadingEl.remove(); firstToken = false; }
+            this._appendError(data.message);
+          }
+        }
+      }
+    } catch (err) {
+      loadingEl.remove();
+      this._appendError(err.message);
+    } finally {
+      this.isStreaming = false;
+      const sendBtn = document.getElementById('send-btn');
+      sendBtn.innerHTML = '▶';
+      sendBtn.disabled = !document.getElementById('chat-input').value.trim();
+    }
+  }
+
+  // ── Render helpers ────────────────────────────────
+
+  _appendUserMessage(text, fileNames = [], id = null) {
+    const container = document.getElementById('chat-messages');
+    const el = document.createElement('div');
+    el.className = 'msg user';
+    if (id) el.dataset.msgId = id;
+
+    let filesHtml = '';
+    if (fileNames.length > 0) {
+      const chips = fileNames.map(n => {
+        const icon = n.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? '🖼' : '📄';
+        return `<span class="file-chip-display">${icon} ${this._esc(n)}</span>`;
+      }).join('');
+      filesHtml = `<div class="msg-files">${chips}</div>`;
+    }
+
+    el.innerHTML = `${filesHtml}<div class="msg-bubble">${this._esc(text).replace(/\n/g,'<br>')}</div>`;
+    container.appendChild(el);
+    this._scrollBottom();
+    return el;
+  }
+
+  _appendThinkingBlock() {
+    const container = document.getElementById('chat-messages');
+    const wrap = document.createElement('div');
+    wrap.className = 'msg assistant';
+    const block = document.createElement('div');
+    block.className = 'thinking-block';
+    block.innerHTML = `
+      <div class="thinking-header" onclick="this.parentElement.classList.toggle('open')">
+        <span class="thinking-toggle">▶</span>
+        <span>Thinking…</span>
+      </div>
+      <div class="thinking-body"></div>`;
+    wrap.appendChild(block);
+    container.appendChild(wrap);
+    this._scrollBottom();
+    return block;
+  }
+
+  _appendAssistantBubble() {
+    const container = document.getElementById('chat-messages');
+    const wrap = document.createElement('div');
+    wrap.className = 'msg assistant';
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    wrap.appendChild(bubble);
+    container.appendChild(wrap);
+    this._scrollBottom();
+    return bubble;
+  }
+
+  _appendAssistantMessage(text, thinking, sources, streaming) {
+    const container = document.getElementById('chat-messages');
+    const wrap = document.createElement('div');
+    wrap.className = 'msg assistant';
+
+    if (thinking) {
+      const block = document.createElement('div');
+      block.className = 'thinking-block';
+      block.innerHTML = `
+        <div class="thinking-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="thinking-toggle">▶</span>
+          <span>Thinking</span>
+        </div>
+        <div class="thinking-body">${this._esc(thinking)}</div>`;
+      wrap.appendChild(block);
+    }
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    bubble.innerHTML = renderMd(text);
+    wrap.appendChild(bubble);
+
+    container.appendChild(wrap);
+
+    if (sources && sources.length > 0) {
+      const srcEl = document.createElement('div');
+      srcEl.className = 'msg assistant';
+      srcEl.innerHTML = `<div class="msg-sources">Sources: ${
+        sources.map(s => `<a href="#" title="${this._esc(s)}">${this._esc(s.split('/').pop())}</a>`).join(' ')
+      }</div>`;
+      container.appendChild(srcEl);
+    }
+
+    if (text && text.includes('```')) this._appendSaveButton(text);
+
+    wrap.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+    return bubble;
+  }
+
+  _appendSources(sources) {
+    const container = document.getElementById('chat-messages');
+    const el = document.createElement('div');
+    el.className = 'msg assistant';
+    el.innerHTML = `<div class="msg-sources">Sources: ${
+      sources.map(s => `<a href="#" title="${this._esc(s)}">${this._esc(s.split('/').pop())}</a>`).join(' ')
+    }</div>`;
+    container.appendChild(el);
+    this._scrollBottom();
+  }
+
+  _appendSaveButton(content) {
+    const container = document.getElementById('chat-messages');
+    const el = document.createElement('div');
+    el.className = 'msg assistant';
+    const btn = document.createElement('button');
+    btn.className = 'btn-save-vault';
+    btn.textContent = '💾 Save to Obsidian';
+    btn.addEventListener('click', () => this._openSaveDialog(content, el));
+    el.appendChild(btn);
+    container.appendChild(el);
+    this._scrollBottom();
+    return el;
+  }
+
+  _appendLoading() {
+    const container = document.getElementById('chat-messages');
+    const el = document.createElement('div');
+    el.className = 'msg assistant';
+    el.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div>';
+    container.appendChild(el);
+    this._scrollBottom();
+    return el;
+  }
+
+  _appendError(msg) {
+    const container = document.getElementById('chat-messages');
+    const el = document.createElement('div');
+    el.className = 'msg assistant';
+    el.innerHTML = `<div class="msg-bubble" style="border-color:var(--error);color:var(--error);">⚠ ${this._esc(msg)}</div>`;
+    container.appendChild(el);
+    this._scrollBottom();
+  }
+
+  _showWelcome() {
+    const container = document.getElementById('chat-messages');
+    const el = document.createElement('div');
+    el.className = 'chat-welcome';
+    el.id = 'welcome-msg';
+    el.innerHTML = `
+      <div class="chat-welcome-icon">◎</div>
+      <h2>Ask about your notes</h2>
+      <p>Start a conversation. Arc searches your Obsidian vault and answers from your own notes.</p>`;
+    container.appendChild(el);
+  }
+
+  _renderSidebar() {
+    const list = document.getElementById('session-list');
+    const empty = document.getElementById('session-empty');
+
+    if (this.sessions.length === 0) {
+      list.innerHTML = '<div class="session-empty" id="session-empty">No conversations yet</div>';
+      return;
+    }
+
+    list.innerHTML = this.sessions.map(s => `
+      <div class="session-item ${s.id === this.currentSessionId ? 'active' : ''}" data-id="${s.id}">
+        <div class="session-item-title">${this._esc(s.title)}</div>
+        <div class="session-item-date">${this._relDate(s.updated_at)}</div>
+        <button class="session-delete" data-id="${s.id}" title="Delete">×</button>
+      </div>`).join('');
+
+    list.querySelectorAll('.session-item').forEach(el => {
+      el.addEventListener('click', e => {
+        if (e.target.classList.contains('session-delete')) return;
+        this.loadSession(el.dataset.id);
+      });
+    });
+
+    list.querySelectorAll('.session-delete').forEach(btn => {
+      btn.addEventListener('click', e => this.deleteSession(btn.dataset.id, e));
+    });
+  }
+
+  // ── Save dialog ───────────────────────────────────
+
+  _openSaveDialog(content, msgEl) {
+    this._pendingSaveContent = content;
+    this._pendingSaveMsgEl = msgEl;
+    const ts = new Date().toISOString().slice(0, 10);
+    document.getElementById('save-filename').value = `chat-${ts}.md`;
+    document.getElementById('save-overlay').style.display = 'flex';
+  }
+
+  _closeSaveDialog() {
+    document.getElementById('save-overlay').style.display = 'none';
+    this._pendingSaveContent = null;
+    this._pendingSaveMsgEl = null;
+  }
+
+  async _confirmSave() {
+    const filename = document.getElementById('save-filename').value.trim();
+    if (!filename || !this._pendingSaveContent || !this.currentSessionId) return;
+
+    const res = await fetch(`/chat/api/sessions/${this.currentSessionId}/write-note`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({content: this._pendingSaveContent, filename}),
+    });
+    const data = await res.json();
+    this._closeSaveDialog();
+
+    if (data.success && this._pendingSaveMsgEl) {
+      const ok = document.createElement('div');
+      ok.className = 'save-success';
+      ok.textContent = `✓ Saved to vault: ${data.data.path}`;
+      this._pendingSaveMsgEl.appendChild(ok);
+    }
+  }
+
+  // ── Utils ─────────────────────────────────────────
+
+  _scrollBottom() {
+    const el = document.getElementById('chat-messages');
+    el.scrollTop = el.scrollHeight;
+  }
+
+  _esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  _relDate(iso) {
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = Math.floor((now - d) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+    return d.toLocaleDateString();
+  }
+}
+
+const arc = new ArcChat();
+arc.init();
+</script>
+{% endblock %}

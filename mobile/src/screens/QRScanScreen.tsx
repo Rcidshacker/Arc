@@ -1,14 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Alert,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  withRepeat,
+  withSequence,
+  Easing,
+  cancelAnimation,
+} from 'react-native-reanimated';
+import { Ionicons } from '@expo/vector-icons';
 import type { StackScreenProps } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 import { Colors } from '../theme/colors';
@@ -26,10 +38,81 @@ if (Platform.OS !== 'web') {
 }
 
 type Props = StackScreenProps<RootStackParamList, 'QRScan'>;
+type ConnectStep = 'input' | 'connecting' | 'connected' | 'error';
 
-function WebUrlInput({ onConnect }: { onConnect: (url: string) => void }): React.JSX.Element {
+// ---------------------------------------------------------------------------
+// Connection animation overlay — shows after successful connect
+// ---------------------------------------------------------------------------
+
+function ConnectedOverlay({ url }: { url: string }): React.JSX.Element {
+  const checkScale = useSharedValue(0);
+  const ringScale = useSharedValue(0.4);
+  const ringOpacity = useSharedValue(1);
+  const textOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    checkScale.value = withSpring(1, { damping: 10, stiffness: 120 });
+    ringScale.value = withTiming(2.8, { duration: 900, easing: Easing.out(Easing.ease) });
+    ringOpacity.value = withTiming(0, { duration: 900 });
+    textOpacity.value = withTiming(1, { duration: 500 });
+  }, []);
+
+  const checkStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkScale.value }],
+  }));
+  const ringStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: ringScale.value }],
+    opacity: ringOpacity.value,
+  }));
+  const textStyle = useAnimatedStyle(() => ({ opacity: textOpacity.value }));
+
+  return (
+    <View style={styles.center}>
+      <View style={styles.animationWrapper}>
+        <Animated.View style={[styles.ring, ringStyle]} />
+        <Animated.View style={checkStyle}>
+          <Ionicons name="checkmark-circle" size={72} color={Colors.success} />
+        </Animated.View>
+      </View>
+      <Animated.Text style={[styles.connectedTitle, textStyle]}>Connected to Arc</Animated.Text>
+      <Animated.Text style={[styles.connectedUrl, textStyle]} numberOfLines={1}>{url}</Animated.Text>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Connecting spinner
+// ---------------------------------------------------------------------------
+
+function ConnectingView(): React.JSX.Element {
+  const spinnerOpacity = useSharedValue(0);
+  useEffect(() => {
+    spinnerOpacity.value = withTiming(1, { duration: 200 });
+  }, []);
+  const style = useAnimatedStyle(() => ({ opacity: spinnerOpacity.value }));
+  return (
+    <Animated.View style={[styles.center, style]}>
+      <ActivityIndicator size="large" color={Colors.accent} />
+      <Text style={[styles.subtitle, { marginTop: 20 }]}>Connecting to Arc…</Text>
+    </Animated.View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Web URL input form
+// ---------------------------------------------------------------------------
+
+function WebUrlInput({
+  onConnect,
+  errorMsg,
+  onClearError,
+}: {
+  onConnect: (url: string) => void;
+  errorMsg: string;
+  onClearError: () => void;
+}): React.JSX.Element {
   const [inputUrl, setInputUrl] = useState('');
-  const [error, setError] = useState('');
+  const [localError, setLocalError] = useState('');
   const [showHttpWarning, setShowHttpWarning] = useState(false);
 
   function handleConnect(): void {
@@ -37,20 +120,22 @@ function WebUrlInput({ onConnect }: { onConnect: (url: string) => void }): React
     try {
       const parsed = new URL(trimmed);
       if (!['http:', 'https:'].includes(parsed.protocol)) {
-        setError('URL must start with http:// or https://');
+        setLocalError('URL must start with http:// or https://');
         return;
       }
       if (!parsed.hostname) {
-        setError('Enter a valid URL with a hostname, e.g. http://192.168.1.10:8000');
+        setLocalError('Enter a valid URL, e.g. http://192.168.1.10:8000');
         return;
       }
-      setError('');
+      setLocalError('');
       setShowHttpWarning(parsed.protocol === 'http:');
       onConnect(trimmed);
     } catch {
-      setError('Invalid URL format. Example: http://192.168.1.10:8000');
+      setLocalError('Invalid URL format. Example: http://192.168.1.10:8000');
     }
   }
+
+  const displayError = errorMsg || localError;
 
   return (
     <KeyboardAvoidingView style={styles.center} behavior="padding">
@@ -59,7 +144,7 @@ function WebUrlInput({ onConnect }: { onConnect: (url: string) => void }): React
       <TextInput
         style={styles.input}
         value={inputUrl}
-        onChangeText={(v) => { setInputUrl(v); setError(''); }}
+        onChangeText={(v) => { setInputUrl(v); setLocalError(''); onClearError(); }}
         placeholder="http://192.168.x.x:8000"
         placeholderTextColor={Colors.textMuted}
         autoCapitalize="none"
@@ -67,17 +152,24 @@ function WebUrlInput({ onConnect }: { onConnect: (url: string) => void }): React
         keyboardType="url"
         onSubmitEditing={handleConnect}
         returnKeyType="go"
+        testID="server-url-input"
       />
-      {error.length > 0 && <Text style={styles.errorText}>{error}</Text>}
+      {displayError.length > 0 && (
+        <Text style={styles.errorText}>{displayError}</Text>
+      )}
       <TouchableOpacity style={styles.button} onPress={handleConnect} activeOpacity={0.8}>
         <Text style={styles.buttonText}>Connect</Text>
       </TouchableOpacity>
-      {showHttpWarning && (
-        <Text style={styles.httpWarningText}>⚠ Unencrypted connection — safe for local network</Text>
+      {showHttpWarning && !displayError && (
+        <Text style={styles.httpWarningText}>⚠ Unencrypted — safe for local network</Text>
       )}
     </KeyboardAvoidingView>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Native QR scanner
+// ---------------------------------------------------------------------------
 
 function NativeScanner({ onSuccess }: { onSuccess: (url: string) => void }): React.JSX.Element {
   const [permission, requestPermission] = useCameraPermissions!();
@@ -102,11 +194,7 @@ function NativeScanner({ onSuccess }: { onSuccess: (url: string) => void }): Rea
   }
 
   if (!permission) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.subtitle}>Requesting camera…</Text>
-      </View>
-    );
+    return <View style={styles.container}><Text style={styles.subtitle}>Requesting camera…</Text></View>;
   }
   if (!permission.granted) {
     return (
@@ -137,20 +225,73 @@ function NativeScanner({ onSuccess }: { onSuccess: (url: string) => void }): Rea
   );
 }
 
-export function QRScanScreen({ navigation }: Props): React.JSX.Element {
+// ---------------------------------------------------------------------------
+// Main screen
+// ---------------------------------------------------------------------------
+
+export function QRScanScreen({ navigation, route }: Props): React.JSX.Element {
+  const [step, setStep] = useState<ConnectStep>('input');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [connectedUrl, setConnectedUrl] = useState('');
+
   async function handleConnect(url: string): Promise<void> {
-    try { await setServerUrl(url); } catch { /* non-fatal on web */ }
+    setStep('connecting');
+    setErrorMsg('');
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      try {
+        await fetch(`${url}/`, {
+          signal: controller.signal,
+          ...(Platform.OS === 'web' ? { mode: 'no-cors' as RequestMode } : {}),
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    } catch (fetchErr) {
+      const isAbort = fetchErr instanceof Error && fetchErr.name === 'AbortError';
+      setErrorMsg(isAbort ? 'Connection timed out. Check URL.' : 'Cannot reach server. Check URL and WiFi.');
+      setStep('error');
+      return;
+    }
+
+    // Save URL before showing animation
+    try { await setServerUrl(url); } catch { /* non-fatal */ }
+    setConnectedUrl(url);
+    setStep('connected');
+
+    // Wait for animation, then navigate
+    await new Promise<void>((res) => setTimeout(res, 1200));
     navigation.goBack();
   }
 
-  if (Platform.OS === 'web') {
-    return (
-      <View style={styles.container}>
-        <WebUrlInput onConnect={handleConnect} />
-      </View>
-    );
-  }
-  return <NativeScanner onSuccess={handleConnect} />;
+  // Close/back button (shown in input and error states)
+  const showCloseBtn = step === 'input' || step === 'error';
+
+  return (
+    <View style={styles.container}>
+      {showCloseBtn && (
+        <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="close" size={26} color={Colors.textMuted} />
+        </TouchableOpacity>
+      )}
+
+      {step === 'connected' && <ConnectedOverlay url={connectedUrl} />}
+      {step === 'connecting' && <ConnectingView />}
+      {(step === 'input' || step === 'error') && (
+        Platform.OS === 'web'
+          ? (
+            <WebUrlInput
+              onConnect={handleConnect}
+              errorMsg={errorMsg}
+              onClearError={() => setErrorMsg('')}
+            />
+          )
+          : <NativeScanner onSuccess={handleConnect} />
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -162,6 +303,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
   },
+  closeBtn: {
+    position: 'absolute',
+    top: 56,
+    right: 20,
+    zIndex: 10,
+    padding: 8,
+  },
+  // Connection animation
+  animationWrapper: {
+    width: 120,
+    height: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  ring: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 2,
+    borderColor: Colors.success,
+  },
+  connectedTitle: {
+    color: Colors.success,
+    fontSize: Typography.size.xl,
+    fontFamily: Typography.family.bold,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  connectedUrl: {
+    color: Colors.textMuted,
+    fontSize: Typography.size.sm,
+    fontFamily: Typography.family.mono,
+    textAlign: 'center',
+    maxWidth: 280,
+  },
+  // Input form
   title: {
     color: Colors.text,
     fontSize: Typography.size.xl,
@@ -202,6 +381,7 @@ const styles = StyleSheet.create({
     color: Colors.error,
     fontSize: Typography.size.sm,
     marginBottom: 12,
+    textAlign: 'center',
   },
   httpWarningText: {
     color: Colors.textMuted,

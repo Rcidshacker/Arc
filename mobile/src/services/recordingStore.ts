@@ -183,3 +183,12 @@ export async function deleteRecording(id: string): Promise<void> {
   }
   return deleteRecordingNative(id);
 }
+
+export async function importRecording(uri: string, durationMs: number): Promise<Recording> {
+  if (Platform.OS === 'web') {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    return saveRecordingWeb(blob, durationMs);
+  }
+  return saveRecordingNative(uri, durationMs);
+}

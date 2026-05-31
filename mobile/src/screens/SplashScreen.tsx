@@ -8,14 +8,16 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import * as ExpoSplashScreen from 'expo-splash-screen';
 import type { StackScreenProps } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../App';
 import { Colors } from '../theme/colors';
+import { StatusBar } from 'expo-status-bar';
 
 type Props = StackScreenProps<RootStackParamList, 'Splash'>;
 
 const VIDEO_SOURCE = require('../../assets/splash.mp4');
-const FALLBACK_TIMEOUT_MS = 3000;
+const FALLBACK_TIMEOUT_MS = 7000;
 
 function SplashWeb({ navigation }: Props): React.JSX.Element {
   const logoOpacity = useSharedValue(0);
@@ -32,6 +34,7 @@ function SplashWeb({ navigation }: Props): React.JSX.Element {
   }));
 
   useEffect(() => {
+    void ExpoSplashScreen.hideAsync();
     logoOpacity.value = withTiming(1, { duration: 800, easing: Easing.out(Easing.ease) });
     logoScale.value = withTiming(1, { duration: 800, easing: Easing.out(Easing.ease) });
 
@@ -73,6 +76,7 @@ function SplashNative({ navigation }: Props): React.JSX.Element {
   });
 
   useEffect(() => {
+    void ExpoSplashScreen.hideAsync();
     const fallback = setTimeout(advance, FALLBACK_TIMEOUT_MS);
 
     const sub = player.addListener('playingChange', (event) => {
@@ -91,13 +95,17 @@ function SplashNative({ navigation }: Props): React.JSX.Element {
   }, [player]);
 
   return (
-    <View style={styles.container}>
-      <VideoView
-        player={player}
-        style={styles.video}
-        nativeControls={false}
-        allowsFullscreen={false}
-      />
+    <View style={styles.outerWrapper}>
+      <StatusBar hidden />
+      <View style={styles.nativeContainer}>
+        <VideoView
+          player={player}
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+          contentFit="cover"
+          nativeControls={false}
+          allowsFullscreen={false}
+        />
+      </View>
     </View>
   );
 }
@@ -110,6 +118,24 @@ export function SplashScreen(props: Props): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
+  outerWrapper: {
+    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  nativeContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#15161D',
+  },
   container: {
     flex: 1,
     backgroundColor: Colors.bg,
@@ -119,12 +145,5 @@ const styles = StyleSheet.create({
   logo: {
     width: 160,
     height: 160,
-  },
-  video: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
   },
 });

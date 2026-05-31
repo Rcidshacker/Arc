@@ -7,6 +7,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -17,17 +18,24 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import type { StackScreenProps } from '@react-navigation/stack';
+import { useFocusEffect } from '@react-navigation/native';
 
-import type { MainTabParamList } from '../../App';
+import type { MainTabParamList, RootStackParamList } from '../../App';
 import { Colors } from '../theme/colors';
 import { Typography } from '../theme/typography';
 import { startRecording, stopRecording, getLastWebBlob } from '../services/audioRecorder';
 import { saveRecording } from '../services/recordingStore';
+import { getServerUrl, getUserName, isNamePrompted, setNamePrompted } from '../services/storage';
 
 type ToastState = 'hidden' | 'visible' | 'fading';
 
-type Props = BottomTabScreenProps<MainTabParamList, 'Recorder'>;
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<MainTabParamList, 'Recorder'>,
+  StackScreenProps<RootStackParamList>
+>;
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -49,12 +57,13 @@ function formatDateTime(): string {
   });
 }
 
-export function RecorderScreen(_props: Props): React.JSX.Element {
+export function RecorderScreen({ navigation }: Props): React.JSX.Element {
   const [isRecording, setIsRecording] = useState(false);
   const [durationMs, setDurationMs] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState<ToastState>('hidden');
   const [dateLabel, setDateLabel] = useState(formatDateTime());
+  const [isConnected, setIsConnected] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -70,6 +79,40 @@ export function RecorderScreen(_props: Props): React.JSX.Element {
   }));
 
   const toastStyle = useAnimatedStyle(() => ({ opacity: toastOpacity.value }));
+
+  // ------------------------------------------------------------------
+  // First-launch name prompt (once only)
+  // ------------------------------------------------------------------
+
+  useEffect(() => {
+    async function checkFirstLaunch(): Promise<void> {
+      const prompted = await isNamePrompted();
+      if (prompted) return;
+      const name = await getUserName();
+      if (name !== null) { await setNamePrompted(); return; }
+      Alert.alert(
+        "What's your name?",
+        'Arc will label your recordings with it on the laptop.',
+        [
+          { text: 'Skip', onPress: () => { void setNamePrompted(); } },
+          { text: 'Set name', onPress: () => { void setNamePrompted(); navigation.navigate('Profile'); } },
+        ],
+      );
+    }
+    void checkFirstLaunch();
+  }, []);
+
+  // ------------------------------------------------------------------
+  // Connection status
+  // ------------------------------------------------------------------
+
+  useFocusEffect(useCallback(() => {
+    getServerUrl().then((url) => setIsConnected(url !== null)).catch(() => setIsConnected(false));
+  }, []));
+
+  // ------------------------------------------------------------------
+  // Timer + cleanup
+  // ------------------------------------------------------------------
 
   useEffect(() => {
     const interval = setInterval(() => setDateLabel(formatDateTime()), 60_000);
@@ -121,11 +164,8 @@ export function RecorderScreen(_props: Props): React.JSX.Element {
 
   async function handleToggle(): Promise<void> {
     if (isProcessing) return;
-    if (!isRecording) {
-      await handleStart();
-    } else {
-      await handleStop();
-    }
+    if (!isRecording) await handleStart();
+    else await handleStop();
   }
 
   async function handleStart(): Promise<void> {
@@ -139,8 +179,6 @@ export function RecorderScreen(_props: Props): React.JSX.Element {
       timerRef.current = setInterval(() => {
         setDurationMs(Date.now() - startTimeRef.current);
       }, 500);
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to start recording.');
     } finally {
       setIsProcessing(false);
     }
@@ -161,8 +199,6 @@ export function RecorderScreen(_props: Props): React.JSX.Element {
         : uri;
       await saveRecording(source, elapsed);
       showToast();
-    } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save recording.');
     } finally {
       setIsRecording(false);
       setDurationMs(0);
@@ -177,43 +213,80 @@ export function RecorderScreen(_props: Props): React.JSX.Element {
     : 'Tap to record';
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.dateLabel}>{dateLabel}</Text>
-      <Text style={styles.timer}>{formatDuration(durationMs)}</Text>
-
-      <View style={styles.buttonWrapper}>
-        <Animated.View
-          style={[styles.pulseRing, { borderColor: ringColor }, pulseStyle]}
-        />
-        <TouchableOpacity
-          style={[styles.recordButton, { backgroundColor: isRecording ? Colors.recording : Colors.bgElevated }]}
-          onPress={handleToggle}
-          activeOpacity={0.85}
-          disabled={isProcessing}
-        >
-          <Ionicons
-            name={isRecording ? 'stop' : 'mic'}
-            size={40}
-            color={isRecording ? Colors.text : Colors.accent}
-          />
-        </TouchableOpacity>
-        <View style={[styles.accentRing, { borderColor: isRecording ? 'transparent' : Colors.accent }]} />
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      {/* Header row — flex layout so it sits below the safe-area inset, not behind it */}
+      <View style={styles.headerRow}>
+        <Text style={styles.dateLabel}>{dateLabel}</Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.profileBtn}
+            onPress={() => navigation.navigate('Profile')}
+            accessibilityLabel="Open profile"
+            testID="profile-btn"
+          >
+            <Ionicons name="person-outline" size={20} color={Colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.wifiBtn}
+            onPress={() => navigation.navigate('QRScan', { mode: 'settings' })}
+            accessibilityLabel={isConnected ? 'Connected — tap to change' : 'Not connected — tap to pair'}
+            testID="recorder-wifi-btn"
+          >
+            <Ionicons
+              name={isConnected ? 'wifi' : 'wifi-outline'}
+              size={22}
+              color={Colors.textMuted}
+            />
+            <View style={[styles.dot, { backgroundColor: isConnected ? Colors.success : Colors.textMuted }]} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <Text style={styles.statusText}>{statusText}</Text>
+      {/* Main content — centered in remaining space */}
+      <View style={styles.content}>
+        <Text style={styles.timer}>{formatDuration(durationMs)}</Text>
 
-      {toast !== 'hidden' && (
-        <Animated.View style={[styles.toast, toastStyle]}>
-          <Text style={styles.toastText}>Saved to library</Text>
-        </Animated.View>
-      )}
+        <View style={styles.buttonWrapper}>
+          <Animated.View
+            style={[styles.pulseRing, { borderColor: ringColor }, pulseStyle]}
+          />
+          <TouchableOpacity
+            style={[styles.recordButton, { backgroundColor: isRecording ? Colors.recording : Colors.bgElevated }]}
+            onPress={async () => {
+              try {
+                await handleToggle();
+              } catch (e: any) {
+                Alert.alert('Debug Error', e?.stack || e?.message || String(e));
+              }
+            }}
+            activeOpacity={0.85}
+            disabled={isProcessing}
+            testID="record-btn"
+          >
+            <Ionicons
+              name={isRecording ? 'stop' : 'mic'}
+              size={40}
+              color={isRecording ? Colors.text : Colors.accent}
+            />
+          </TouchableOpacity>
+          <View style={[styles.accentRing, { borderColor: isRecording ? 'transparent' : Colors.accent }]} />
+        </View>
 
-      {Platform.OS === 'web' && (
-        <Text style={styles.webCaveat}>
-          Background recording unavailable in browser — use Android app
-        </Text>
-      )}
-    </View>
+        <Text style={styles.statusText}>{statusText}</Text>
+
+        {toast !== 'hidden' && (
+          <Animated.View style={[styles.toast, toastStyle]}>
+            <Text style={styles.toastText}>Saved to library</Text>
+          </Animated.View>
+        )}
+
+        {Platform.OS === 'web' && (
+          <Text style={styles.webCaveat}>
+            Background recording unavailable in browser — use Android app
+          </Text>
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -222,20 +295,48 @@ const PULSE_SIZE = BUTTON_SIZE + 60;
 const RING_SIZE = BUTTON_SIZE + 20;
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: Colors.bg,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  profileBtn: {
+    padding: 4,
+  },
+  content: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
   },
   dateLabel: {
-    position: 'absolute',
-    top: 56,
-    left: 24,
     color: Colors.textMuted,
     fontSize: Typography.size.sm,
     fontFamily: Typography.family.mono,
+  },
+  wifiBtn: {
+    padding: 4,
+  },
+  dot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: Colors.bg,
   },
   timer: {
     color: Colors.text,

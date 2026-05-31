@@ -44,6 +44,11 @@
         >
           <span class="nav-icon">⊞</span> QR Pair
         </a>
+        <a href="/chat"
+          {% if request.url.path.startswith('/chat') %}class="active"{% endif %}
+        >
+          <span class="nav-icon">◎</span> Chat
+        </a>
       </nav>
 
     </div>

@@ -1,88 +1,157 @@
-<div align="center">
+div align="center">
 
-# Arc
+# 🌌 Arc
 
-**Local meeting intelligence for Hinglish conversations**
+**Local-first personal meeting intelligence for Hinglish conversations.**
 
-`Local-First` &nbsp;·&nbsp; `Hinglish-Native` &nbsp;·&nbsp; `Zero Cloud`
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=FastAPI&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React Native](https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactnative.dev/)
+[![Expo](https://img.shields.io/badge/Expo-000020?style=for-the-badge&logo=expo&logoColor=white)](https://expo.dev/)
+[![llama.cpp](https://img.shields.io/badge/llama.cpp-CUDA-orange?style=for-the-badge)](https://github.com/ggerganov/llama.cpp)
+[![Obsidian](https://img.shields.io/badge/Obsidian-7C3AED?style=for-the-badge&logo=obsidian&logoColor=white)](https://obsidian.md/)
 
 </div>
 
 ---
 
-Android records your meeting with screen off → uploads over WiFi to a laptop FastAPI server → sequential ML pipeline transcribes, diarizes, and generates structured notes → writes to your Obsidian vault in under 10 minutes. No cloud APIs required for the default path. Single-user, zero cost.
-
-<!-- Add demo GIF here -->
+Arc is a local-first personal meeting intelligence system. Android records meetings (even with screen off) → uploads to a FastAPI laptop server over WiFi → sequential ML pipeline (ffmpeg → whisper-cli.exe → pyannote → Gemma 4 via llama-server) → structured Obsidian vault note in under 10 minutes. Zero cloud. Zero cost. Single user.
 
 ---
 
-## How It Works
+## 📱 Features
 
-1. 🎙️ **Record** — Android app runs a foreground service, keeps recording alive with screen off
-2. 📤 **Upload** — one-tap WiFi upload to the FastAPI server on the same network
-3. 🔊 **Normalize** — `ffmpeg` converts any format to 16 kHz mono WAV
-4. 📝 **Transcribe** — `whisper-cli.exe` (`ggml-large-v3-turbo`) via subprocess; fallback to Groq or Gemini
-5. 👥 **Diarize** — `pyannote/speaker-diarization-3.1` segments by speaker (up to 8)
-6. 🔗 **Align** — overlap-match whisper segments to pyannote speaker labels
-7. 🗂️ **Speaker DB** — extracts 10s clip per label; pipeline halts at `needs_naming`
-8. ✍️ **Name** — web UI plays clips, you assign names to `SPEAKER_00`, `SPEAKER_01`, etc.
-9. 🧠 **Generate note** — Gemma 4 via llama-server (thinking mode) → structured JSON
-10. 📓 **Write to vault** — Obsidian folder with `note.md`, `transcript.md`, `audio_ref.txt`
+### 📱 Android App (Expo SDK 54)
+- **Background audio recording** — continues with screen off (via Android Foreground Service)
+- **Custom splash screen** with video animation
+- **Library screen** — manage, playback, and select recordings to send
+- **Import audio files** from phone storage
+- **WiFi upload** with per-file progress bars and ETA
+- **QR code pairing** with laptop server
+- **Connection animation** with server health check
+- **User profile** — name registration for meeting labels
+- **Works in Expo Go** for testing; APK build for full background recording
 
----
+### 🖥️ Web Dashboard
+- **Meeting list** with status tracking (`uploaded` → `needs_naming` → `processing` → `done`/`error`)
+- **Speaker naming UI** with audio clip playback
+- **Delete individual meetings** or bulk-delete errors
+- **Phone recordings** labelled with sender name and device source
+- **QR Pair page** to display server connection QR code
+- **Landing page**
 
-## Features
+### ⚙️ Pipeline (Laptop, fully local)
+- **ffmpeg normalization** → WAV 16kHz mono
+- **whisper-cli.exe** (whisper.cpp CUDA) transcription — Hinglish support
+- **pyannote speaker diarization** (fault-tolerant, degrades to single speaker)
+- **Speaker alignment** + name inference via Gemma 4
+- **Note generation** with Gemma 4 thinking mode → structured JSON → Markdown
+- **Obsidian vault write** via MCP or direct pathlib fallback
+- **SQLite state machine**: `uploaded` → `needs_naming` → `processing` → `done`/`error`
 
-| | Feature | Details |
-|---|---|---|
-| 🔒 | Local-first | No audio leaves the machine |
-| 🌐 | Multi-provider transcription | llamacpp (default) · Groq · Gemini |
-| 👤 | Speaker diarization | pyannote 3.1, up to 8 speakers |
-| 🎵 | Audio clip preview | 10s per-speaker WAV clips in naming UI |
-| 📊 | Web dashboard | Status polling, transcript view, speaker summary |
-| 📓 | Obsidian output | YAML frontmatter, wikilinks, full transcript |
-| 🔄 | Duplicate detection | SHA-256 hash check on upload (409 on collision) |
-| 🗄️ | SQLite WAL | Concurrent server + watcher access, all queries parameterized |
-
----
-
-## Tech Stack
-
-### Audio Pipeline
-| Component | Library / Tool |
-|---|---|
-| Normalization | ffmpeg subprocess (`shell=False`) |
-| Transcription (default) | whisper-cli.exe · ggml-large-v3-turbo |
-| Transcription (cloud fallback) | Groq whisper-large-v3-turbo · Gemini 2.5 Flash |
-| Diarization | pyannote/speaker-diarization-3.1 |
-| Speaker alignment | custom overlap matcher |
-
-### Intelligence Layer
-| Component | Library / Tool |
-|---|---|
-| Note generation | Gemma 4 via llama-server (port 8081) |
-| Reasoning | `<\|think\|>` prefix → extended thinking mode |
-| Speaker naming inference | `name_inferrer.py` (wired up, inactive by default) |
-
-### Application Layer
-| Component | Library / Tool |
-|---|---|
-| API server | FastAPI + uvicorn |
-| Web UI | Jinja2 templates |
-| Database | SQLite WAL |
-| Mobile app | React Native · Expo SDK 54 (Android) |
-| QR pairing | qrcode library |
+### 💬 Arc Chat (RAG Chat Interface)
+- **Claude.ai-style chat UI** on the web dashboard
+- **Obsidian vault** as knowledge base (BM25 keyword search with score threshold)
+- **Strict RAG** — answers only from your notes ("*I don't have notes on that topic.*" when no relevant content is found)
+- **Thinking mode toggle** — Gemma 4 extended reasoning via `<|think|>`
+- **Effort control** — Low / Medium / High (controls context depth and chunk count)
+- **Internet toggle** — Gemma 4 tool calling with web search
+- **File uploads** — images (Gemma 4 multimodal vision), PDFs, DOCX, TXT
+- **Write back** to Obsidian vault from chat
+- **Persistent chat sessions** with history
+- **Streaming responses** with collapsible thinking blocks
+- **Markdown rendering** with syntax highlighting
 
 ---
 
-## Getting Started
+## 🏗️ Architecture
+
+Arc uses a distributed local-first architecture optimized for single-GPU setups (e.g. laptop with RTX 4050 6GB VRAM) where VRAM constraints prevent running pyannote and llama-server simultaneously. 
+
+### Core Components
+- **mobile/**: React Native Expo SDK 54 app (bare workflow pending prebuild) handling low-power background recording and local WiFi transmission.
+- **server/**: FastAPI server running on the laptop, serving endpoints, the web UI dashboard, and coordinate workflows.
+- **server/chat/**: RAG engine, chat routes, file processor, and streaming engine.
+- **server/pipeline/**: Sequential ML steps ensuring that only one model occupies the GPU at a time.
+
+### Required Services
+The system coordinates three running processes:
+1. **FastAPI server** (`:8000`): Main API, dashboard UI, and file ingestion.
+2. **llama-server** (`:8081`): Serves Gemma 4 for transcription (llamacpp) and note generation.
+3. **Obsidian MCP server** (`:3100`): Allows write and query access to the Obsidian vault.
+
+```
+                      ┌─────────────────────────────────────────┐
+                      │          📱 Android Mobile App          │
+                      │        (React Native Expo SDK 54)       │
+                      └────────────────────┬────────────────────┘
+                                           │
+                                           │ (WiFi Upload over HTTP)
+                                           ▼
+                      ┌─────────────────────────────────────────┐
+                      │         🖥️ FastAPI Laptop Server        │
+                      │          (Port 8000, SQLite WAL)        │
+                      └────────────┬─────────────────┬──────────┘
+                                   │                 │
+              (Triggers Watcher)   │                 │ (Arc Chat RAG UI)
+                                   ▼                 ▼
+ ┌─────────────────────────────────────────┐   ┌─────────────────────────────────────────┐
+ │             ⚙️ ML Pipeline              │   │               💬 Arc Chat               │
+ │     Sequential Execution (RTX CUDA)     │   │      (RAG, BM25 Search, Streaming)      │
+ └─────────────────┬───────────────────────┘   └─────────────────┬───────────────────────┘
+                   │                                             │
+                   │ (ffmpeg → whisper → pyannote → Gemma 4)     │ (strict context answers)
+                   ▼                                             ▼
+ ┌───────────────────────────────────────────────────────────────────────────────────────┐
+ │                                   📓 Obsidian Vault                                   │
+ │             Structured Notes (Markdown + YAML) & Obsidian MCP (:3100)                 │
+ └───────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Project Structure
+
+```
+Arc/
+├── server/
+│   ├── main.py              # FastAPI app — REST API + Jinja2 web UI
+│   ├── watcher.py           # Polling loop (2s) on intake/; Python 3.13 safe
+│   ├── database.py          # SQLite schema + all queries
+│   ├── chat/                # RAG engine, chat routes, file processor, streaming engine
+│   │   ├── engine.py        # Chat response streaming & engine
+│   │   ├── file_processor.py# PDF, docx, txt, and image parsing
+│   │   ├── rag.py           # BM25 knowledge search over Obsidian vault
+│   │   └── routes.py        # Web chat endpoints
+│   ├── pipeline/
+│   │   ├── normalizer.py    # ffmpeg → 16 kHz mono WAV
+│   │   ├── transcriber.py   # llamacpp / groq / gemini provider routing
+│   │   ├── diarizer.py      # pyannote 3.1 with three runtime patches
+│   │   ├── aligner.py       # overlap-match transcript ↔ speaker turns
+│   │   ├── speaker_db.py    # clip extraction; all labels → needs_naming
+│   │   ├── name_inferrer.py # Gemma — infer names from vocative context
+│   │   ├── note_generator.py# Gemma 4 thinking mode → structured JSON
+│   │   └── vault_writer.py  # write Obsidian folder (MCP → pathlib fallback)
+│   └── templates/           # dashboard, transcript, naming, qr, landing, chat
+├── mobile/
+│   ├── App.tsx              # React Navigation + gesture handler setup
+│   └── src/
+│       ├── screens/         # RecorderScreen, QRScannerScreen, LibraryScreen
+│       └── services/        # audioRecorder.ts, uploader.ts
+├── tests/                   # pytest suite (skip ml-tagged tests locally)
+├── requirements.txt
+├── .env.example
+└── CLAUDE.md
+```
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
 - Python 3.13
 - Node.js (for mobile)
-- ffmpeg on `PATH` — verify with `ffmpeg -version`
-- llama-server running with a Gemma 4 model on port 8081
+- `ffmpeg` on your `PATH` — verify with `ffmpeg -version`
+- llama-server running with a Gemma 4 model on port `8081`
 - [Accept pyannote terms](https://huggingface.co/pyannote/speaker-diarization-3.1) on Hugging Face (required for diarization)
 - Whisper CLI binary + `ggml-large-v3-turbo.bin` model (if using default llamacpp transcription)
 
@@ -115,6 +184,8 @@ Copy `.env.example` to `.env` and fill in the required values:
 # Obsidian vault
 OBSIDIAN_VAULT_PATH=C:\Users\YourName\path\to\obsidian\vault
 OBSIDIAN_MEETINGS_SUBFOLDER=Meetings
+# Obsidian MCP SSE endpoint (vault_writer tries this before direct writes)
+OBSIDIAN_MCP_URL=http://localhost:3100/sse
 
 # Arc working directories (created on first run)
 ARC_INTAKE_DIR=C:\Users\YourName\Desktop\arc\intake
@@ -135,7 +206,7 @@ WHISPER_CLI_PATH=C:\llama\whisper\whisper-cli.exe
 WHISPER_MODEL_PATH=C:\llama\whisper\models\ggml-large-v3-turbo.bin
 WHISPER_LANGUAGE=hi
 
-# llama-server for note generation
+# llama-server for note generation & transcription
 LLAMACPP_HOST=http://localhost:8081
 
 # Cloud fallbacks (only needed if using groq or gemini provider)
@@ -143,69 +214,69 @@ GROQ_API_KEY=your_groq_api_key_here
 GOOGLE_API_KEY=your_google_api_key_here
 ```
 
-### Running
+### Running the Services
 
-Three processes required:
+Three services are required to run simultaneously:
 
 ```powershell
-# Terminal 1: llama-server with Gemma 4 (manage separately)
-# e.g. llama-server -m gemma-4-e4b.gguf --port 8081
+# 1. llama-server with Gemma 4 (manage in a separate terminal)
+# e.g., llama-server -m gemma-4-e4b.gguf --port 8081
 
-# Terminal 2: FastAPI server (also starts the watcher as a background thread)
-uvicorn server.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Optional Terminal 3: standalone watcher (if not using --reload)
-python server/watcher.py
+# 2. FastAPI Backend & Watcher (Windows PowerShell with PYTHONPATH fix)
+$env:PYTHONPATH="server"; .venv\Scripts\uvicorn.exe server.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Open `http://localhost:8000` for the dashboard. Open `http://localhost:8000/qr` to pair the mobile app.
+Open these local URLs to interact with Arc:
+- **Web Dashboard**: `http://localhost:8000`
+- **Arc Chat Interface**: `http://localhost:8000/chat`
+- **QR Pairing Page**: `http://localhost:8000/qr`
 
----
+### Mobile App Setup
 
-## Project Structure
+```powershell
+cd mobile
+npm install --legacy-peer-deps
 
-```
-Arc/
-├── server/
-│   ├── main.py              # FastAPI app — REST API + Jinja2 web UI
-│   ├── watcher.py           # Polling loop (2s) on intake/; Python 3.13 safe
-│   ├── database.py          # SQLite schema + all queries
-│   ├── pipeline/
-│   │   ├── normalizer.py    # ffmpeg → 16 kHz mono WAV
-│   │   ├── transcriber.py   # llamacpp / groq / gemini provider routing
-│   │   ├── diarizer.py      # pyannote 3.1 with three runtime patches
-│   │   ├── aligner.py       # overlap-match transcript ↔ speaker turns
-│   │   ├── speaker_db.py    # clip extraction; all labels → needs_naming
-│   │   ├── name_inferrer.py # Gemma — infer names from vocative context
-│   │   ├── note_generator.py# Gemma 4 thinking mode → structured JSON
-│   │   └── vault_writer.py  # write Obsidian folder (MCP → pathlib fallback)
-│   └── templates/           # dashboard, transcript, naming, qr, landing
-├── mobile/
-│   ├── App.tsx              # React Navigation + gesture handler setup
-│   └── src/
-│       ├── screens/         # RecorderScreen, QRScannerScreen
-│       └── services/        # audioRecorder.ts, uploader.ts
-├── tests/                   # pytest suite (skip ml-tagged tests locally)
-├── requirements.txt
-├── .env.example
-└── CLAUDE.md
+# Start Expo Go testing
+npx expo start          
+
+# Build standalone APK
+npx expo prebuild --platform android
+# Build commands (requires Android Studio + JDK)
+# (see mobile/android-setup-notes.md for detailed steps)
 ```
 
 ---
 
-## Roadmap
+## ⚖️ Hard Rules
 
-- **Speaker embedding matching** — `speaker_db.py` is an intentional MVP stub. Cross-session resemblyzer cosine matching (threshold `0.75`) is v2; all speakers currently go through the naming UI every time.
-- **name_inferrer activation** — `name_inferrer.py` exists and calls Gemma for vocative-context inference but is not wired into the pipeline execution path yet.
-- **pyannote.audio install** — diarization degrades to single-speaker fallback if pyannote is missing. Full multi-speaker output requires `pip install pyannote.audio` and accepted model terms.
-- **Mobile Android build** — Expo SDK 54 configured; native APK build requires Android Studio + JDK + `eas build --platform android --local`.
+*Strict guidelines enforced across the codebase:*
+
+- **Windows Path Safety**: Always use `pathlib.Path` for all filesystem operations. Never hardcode `/` or `\` path separators.
+- **ffmpeg Subprocesses**: Never run ffmpeg with `shell=True`. Always pass arguments as a list of strings:
+  ```python
+  subprocess.run(["ffmpeg", "-y", "-i", str(input_path), "-ar", "16000", "-ac", "1", str(output_path)], check=True)
+  ```
+- **SQLite Concurrency**: Always open connection with WAL mode and `check_same_thread=False` to handle concurrent access from both server and watcher. All queries must be parameterized to prevent SQL injection.
+- **Audio Deletion Safe Guards**: Audio is never auto-deleted. Deleting raw audio requires explicit `DELETE /meeting/{id}/audio`. Verify paths with `Path.resolve()` to ensure target file is a descendant of `ARC_TEMP_DIR` to prevent path traversal vulnerability.
+- **llama-server Connectivity**: Validate llama-server availability before starting note generation. If down, immediately fail the pipeline with status `error`.
+- **Obsidian DB Entries**: Store Obsidian paths in the DB relative to the vault root (e.g. `Meetings/2025-05-26-1430-Rahul-Priya/`). Resolve them dynamically using the `OBSIDIAN_VAULT_PATH` environment variable.
+- **API Response Structure**: Every API response must strictly follow the format: `{success: bool, data: any, error: str | null}`. Return `409` for hash conflicts on duplicate uploads.
 
 ---
 
-## Contributing
+## 🔮 Roadmap
 
-Single-user personal project. PRs not expected. If you fork and adapt it, the key constraint is sequential pipeline execution — the RTX 4050 has 6 GB VRAM and cannot run pyannote and llama-server simultaneously.
+- **Speaker Embedding Matching** — `speaker_db.py` is currently an MVP stub. Cross-session resemblyzer cosine matching (threshold `0.75`) is planned for v2; speakers currently go through the naming UI every time.
+- **Auto Name Inference** — `name_inferrer.py` calls Gemma for vocative-context inference but is not fully active by default in the pipeline flow.
+- **Standalone pyannote Setup** — If `pyannote` is missing, the diarizer falls back to single-speaker mode. Full multi-speaker support requires `pip install pyannote.audio` and agreeing to model terms.
 
-## License
+---
 
-Private — no public license granted.
+## 🤝 Contributing
+
+This is a single-user personal project built for specific developer needs. Pull requests are not actively monitored.
+
+## 📄 License
+
+Private — all rights reserved. No public distribution or licensing granted.

@@ -107,7 +107,45 @@ CREATE INDEX IF NOT EXISTS idx_transcript_meeting    ON transcript_segments(meet
 CREATE INDEX IF NOT EXISTS idx_transcript_speaker    ON transcript_segments(speaker_id);
 CREATE INDEX IF NOT EXISTS idx_meeting_speakers_meeting ON meeting_speakers(meeting_id);
 CREATE INDEX IF NOT EXISTS idx_upload_log_hash       ON upload_log(sha256_hash);
+
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT 'New Chat',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    effort TEXT NOT NULL DEFAULT 'medium',
+    thinking_enabled INTEGER NOT NULL DEFAULT 1,
+    internet_enabled INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    sources TEXT DEFAULT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session  ON chat_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated  ON chat_sessions(updated_at);
 """
+
+
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after initial schema creation. Safe to re-run."""
+    new_columns = [
+        "ALTER TABLE meetings ADD COLUMN source TEXT DEFAULT 'web'",
+        "ALTER TABLE meetings ADD COLUMN user_name TEXT DEFAULT NULL",
+        "ALTER TABLE meetings ADD COLUMN device_id TEXT DEFAULT NULL",
+        "ALTER TABLE meetings ADD COLUMN recorded_at TEXT DEFAULT NULL",
+    ]
+    for sql in new_columns:
+        try:
+            conn.execute(sql)
+        except sqlite3.OperationalError:
+            pass  # column already exists
+    conn.commit()
 
 
 def init_db(db_path: Path) -> None:
@@ -117,6 +155,7 @@ def init_db(db_path: Path) -> None:
     try:
         conn.executescript(_DDL)
         conn.commit()
+        _run_migrations(conn)
     finally:
         conn.close()
 
@@ -153,15 +192,22 @@ def create_meeting(
     filename: str,
     sha256_hash: str,
     audio_path: str,
+    source: str = 'web',
+    user_name: Optional[str] = None,
+    device_id: Optional[str] = None,
+    recorded_at: Optional[str] = None,
 ) -> None:
     now = _now_iso()
     conn.execute(
         """
         INSERT INTO meetings (id, filename, sha256_hash, upload_time, audio_path,
+                              source, user_name, device_id, recorded_at,
                               status, audio_deleted, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'uploaded', 0, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploaded', 0, ?, ?)
         """,
-        (id, filename, sha256_hash, now, audio_path, now, now),
+        (id, filename, sha256_hash, now, audio_path,
+         source, user_name, device_id, recorded_at,
+         now, now),
     )
     conn.commit()
 

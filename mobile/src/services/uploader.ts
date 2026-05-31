@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import axios, { AxiosError } from 'axios';
+import { getUserName, getDeviceId } from './storage';
 
 export interface UploadProgress {
   loaded: number;
@@ -21,21 +22,39 @@ interface ErrorApiResponse {
   error: string;
 }
 
+interface UploadMeta {
+  source: string;
+  user_name: string;
+  device_id: string;
+  recorded_at: string;
+  duration_seconds: string;
+}
+
 // expo-file-system is native-only — conditionally required
 let FileSystem: { getInfoAsync(uri: string): Promise<{ exists: boolean; size?: number }> } | null = null;
 if (Platform.OS !== 'web') {
-  FileSystem = require('expo-file-system');
+  FileSystem = require('expo-file-system/legacy');
 }
 
 export async function uploadAudio(
   fileUri: string,
   serverUrl: string,
   onProgress: (progress: UploadProgress) => void,
+  metadata?: { recordedAt?: string; duration?: number },
 ): Promise<{ meetingId: string; sha256: string }> {
+  const [userName, deviceId] = await Promise.all([getUserName(), getDeviceId()]);
+  const meta: UploadMeta = {
+    source: 'phone',
+    user_name: userName ?? 'Unknown',
+    device_id: deviceId,
+    recorded_at: metadata?.recordedAt ?? '',
+    duration_seconds: String(metadata?.duration ?? 0),
+  };
+
   if (Platform.OS === 'web') {
-    return uploadAudioWeb(fileUri, serverUrl, onProgress);
+    return uploadAudioWeb(fileUri, serverUrl, onProgress, meta);
   }
-  return uploadAudioNative(fileUri, serverUrl, onProgress);
+  return uploadAudioNative(fileUri, serverUrl, onProgress, meta);
 }
 
 // ---------------------------------------------------------------------------
@@ -46,6 +65,7 @@ async function uploadAudioWeb(
   fileUri: string,
   serverUrl: string,
   onProgress: (progress: UploadProgress) => void,
+  meta: UploadMeta,
 ): Promise<{ meetingId: string; sha256: string }> {
   // Fetch the blob from the object URL created during stopRecording()
   const blobResponse = await fetch(fileUri);
@@ -54,6 +74,11 @@ async function uploadAudioWeb(
   const formData = new FormData();
   // Server accepts any audio — webm works with ffmpeg normalizer
   formData.append('file', blob, 'recording.webm');
+  formData.append('source', meta.source);
+  formData.append('user_name', meta.user_name);
+  formData.append('device_id', meta.device_id);
+  formData.append('recorded_at', meta.recorded_at);
+  formData.append('duration_seconds', meta.duration_seconds);
 
   return new Promise<{ meetingId: string; sha256: string }>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -107,6 +132,7 @@ async function uploadAudioNative(
   fileUri: string,
   serverUrl: string,
   onProgress: (progress: UploadProgress) => void,
+  meta: UploadMeta,
 ): Promise<{ meetingId: string; sha256: string }> {
   const fileInfo = await FileSystem!.getInfoAsync(fileUri);
 
@@ -123,6 +149,11 @@ async function uploadAudioNative(
     name: filename,
     type: mimeType,
   } as unknown as Blob);
+  formData.append('source', meta.source);
+  formData.append('user_name', meta.user_name);
+  formData.append('device_id', meta.device_id);
+  formData.append('recorded_at', meta.recorded_at);
+  formData.append('duration_seconds', meta.duration_seconds);
 
   try {
     const response = await axios.post<UploadApiResponse>(

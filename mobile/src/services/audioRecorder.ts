@@ -2,12 +2,17 @@
  * TESTING GUIDE:
  * - Web (npx expo start --web): Uses MediaRecorder API. Tests UI + upload flow.
  *   Background/screen-off recording is NOT available on web — that's fine.
- * - Expo Go: Uses expo-audio. Tests recording + upload. VIForegroundService no-ops
- *   (custom native module not included in Expo Go).
+ * - Expo Go: Uses expo-av for recording (expo-audio AudioRecorder not available
+ *   in Expo Go bundle). Full expo-audio migration applies to APK build only.
  * - APK (after expo prebuild): Full background recording with screen off. Production behavior.
  */
 import { Platform } from 'react-native';
-import { AudioRecorder, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
+
+// expo-av: used for recording on native (Expo Go compatible)
+let ExpoAV: any = null;
+if (Platform.OS !== 'web') {
+  ExpoAV = require('expo-av');
+}
 
 // VIForegroundService: native only, not available in Expo Go or on web
 let VIForegroundService: {
@@ -24,6 +29,7 @@ if (Platform.OS !== 'web') {
     // Not available in Expo Go — VIForegroundService calls will no-op
   }
 }
+console.log('VIForegroundService loaded:', !!VIForegroundService);
 
 export interface RecordingState {
   isRecording: boolean;
@@ -32,7 +38,7 @@ export interface RecordingState {
 }
 
 // Native recording state
-let activeRecording: AudioRecorder | null = null;
+let activeRecording: any | null = null;
 
 // Web recording state
 let webMediaRecorder: MediaRecorder | null = null;
@@ -127,7 +133,6 @@ async function stopWebRecording(): Promise<string> {
       recordingStartTime = 0;
 
       lastWebBlob = blob;
-      // Revoke previous blob URLs to avoid memory leaks (best effort)
       const url = URL.createObjectURL(blob);
       resolve(url);
     };
@@ -138,14 +143,13 @@ async function stopWebRecording(): Promise<string> {
       reject(new Error('MediaRecorder error while stopping.'));
     };
 
-    // Stop all audio tracks so the browser releases the microphone
     recorder.stream.getTracks().forEach((track) => track.stop());
     recorder.stop();
   });
 }
 
 // ---------------------------------------------------------------------------
-// Native implementation — expo-audio + VIForegroundService
+// Native implementation — expo-av + VIForegroundService
 // ---------------------------------------------------------------------------
 
 async function startNativeRecording(): Promise<void> {
@@ -153,26 +157,30 @@ async function startNativeRecording(): Promise<void> {
     throw new Error('A recording is already in progress.');
   }
 
-  const { status } = await requestRecordingPermissionsAsync();
+  const { Audio } = ExpoAV;
+  const { status } = await Audio.requestPermissionsAsync();
   if (status !== 'granted') {
-    throw new Error('Microphone permission denied. Please enable it in Settings.');
+    throw new Error('Microphone permission denied.');
   }
 
-  await setAudioModeAsync({
-    allowsRecording: true,
-    playsInSilentMode: true,
+  await Audio.setAudioModeAsync({
+    allowsRecordingIOS: true,
+    playsInSilentModeIOS: true,
   });
 
   // Start foreground service BEFORE recording (Android 14 requirement)
-  // No-ops if VIForegroundService is null (Expo Go)
-  if (VIForegroundService !== null) {
-    await VIForegroundService.getInstance().startService(FOREGROUND_SERVICE_CONFIG);
+  // No-ops silently in Expo Go — recording still works, just no screen-off persistence
+  try {
+    const svc = VIForegroundService?.getInstance?.();
+    if (svc) await svc.startService(FOREGROUND_SERVICE_CONFIG);
+  } catch {
+    // Expo Go: VIForegroundService not available, recording continues without FGS
   }
 
-  const recorder = new AudioRecorder(RecordingPresets.HIGH_QUALITY);
-  await recorder.prepareToRecordAsync();
-  recorder.record();
-  activeRecording = recorder;
+  const { recording } = await Audio.Recording.createAsync(
+    Audio.RecordingOptionsPresets.HIGH_QUALITY,
+  );
+  activeRecording = recording;
   recordingStartTime = Date.now();
 }
 
@@ -181,12 +189,15 @@ async function stopNativeRecording(): Promise<string> {
     throw new Error('No active recording to stop.');
   }
 
-  if (VIForegroundService !== null) {
-    await VIForegroundService.getInstance().stopService();
+  try {
+    const svc = VIForegroundService?.getInstance?.();
+    if (svc) await svc.stopService();
+  } catch {
+    // Expo Go: FGS not running, no-op
   }
 
-  await activeRecording.stop();
-  const uri = activeRecording.uri;
+  await activeRecording.stopAndUnloadAsync();
+  const uri = activeRecording.getURI();
   activeRecording = null;
   recordingStartTime = 0;
 
@@ -194,7 +205,7 @@ async function stopNativeRecording(): Promise<string> {
     throw new Error('Recording completed but no file URI was returned.');
   }
 
-  await setAudioModeAsync({ allowsRecording: false });
+  await ExpoAV.Audio.setAudioModeAsync({ allowsRecordingIOS: false });
 
   return uri;
 }

@@ -4,24 +4,26 @@ import {
   FlatList,
   Platform,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { useAudioPlayer } from 'expo-audio';
+import * as DocumentPicker from 'expo-document-picker';
 
 import { Colors } from '../theme/colors';
 import { Typography } from '../theme/typography';
-import { getAllRecordings, deleteRecording } from '../services/recordingStore';
+import { getAllRecordings, deleteRecording, importRecording } from '../services/recordingStore';
 import type { Recording } from '../services/recordingStore';
+import { getServerUrl } from '../services/storage';
 import type { RootStackParamList, MainTabParamList } from '../../App';
 
 // ---------------------------------------------------------------------------
@@ -58,6 +60,18 @@ function formatDuration(sec: number): string {
 
 function formatSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+async function probeWebAudioDurationMs(uri: string): Promise<number> {
+  if (typeof window === 'undefined') return 0;
+  return new Promise((resolve) => {
+    const audio = new (window as any).Audio();
+    const cleanup = () => { audio.src = ''; };
+    audio.onloadedmetadata = () => { resolve((audio.duration || 0) * 1000); cleanup(); };
+    audio.onerror = () => { resolve(0); cleanup(); };
+    audio.src = uri;
+    setTimeout(() => resolve(0), 3000);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +141,6 @@ function RecordingCard({
         accessibilityRole={selectMode ? 'checkbox' : 'button'}
         accessibilityState={selectMode ? { checked: selected } : undefined}
       >
-        {/* Play / pause button */}
         <TouchableOpacity
           style={styles.playButton}
           onPress={onPlayPause}
@@ -141,7 +154,6 @@ function RecordingCard({
           />
         </TouchableOpacity>
 
-        {/* Meta */}
         <View style={styles.cardMeta}>
           <Text style={styles.cardDate}>{formatDate(recording.createdAt)}</Text>
           <Text style={styles.cardStats}>
@@ -149,7 +161,6 @@ function RecordingCard({
           </Text>
         </View>
 
-        {/* Select checkbox */}
         {selectMode && (
           <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
             {selected && <Ionicons name="checkmark" size={14} color={Colors.text} />}
@@ -171,8 +182,19 @@ export function LibraryScreen({ navigation }: Props): React.JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [isConnected, setIsConnected] = useState(false);
+  const [importToast, setImportToast] = useState('');
+  const importToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const player = useAudioPlayer(null);
+
+  // ------------------------------------------------------------------
+  // Connection status
+  // ------------------------------------------------------------------
+
+  useFocusEffect(useCallback(() => {
+    getServerUrl().then((url) => setIsConnected(url !== null)).catch(() => setIsConnected(false));
+  }, []));
 
   // ------------------------------------------------------------------
   // Load / reload
@@ -180,16 +202,51 @@ export function LibraryScreen({ navigation }: Props): React.JSX.Element {
 
   const load = useCallback(async () => {
     const all = await getAllRecordings();
-    // newest first — store already returns sorted but ensure it here
     const sorted = [...all].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     setRecordings(sorted);
   }, []);
 
   useEffect(() => {
-    if (isFocused) {
-      void load();
-    }
+    if (isFocused) void load();
   }, [isFocused, load]);
+
+  // ------------------------------------------------------------------
+  // Import
+  // ------------------------------------------------------------------
+
+  const handleImport = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+
+      let count = 0;
+      for (const asset of result.assets) {
+        try {
+          let durationMs = 0;
+          if (Platform.OS === 'web') {
+            durationMs = await probeWebAudioDurationMs(asset.uri);
+          }
+          await importRecording(asset.uri, durationMs);
+          count++;
+        } catch { /* skip failed */ }
+      }
+
+      if (count > 0) {
+        await load();
+        showImportToast(count);
+      }
+    } catch { /* cancelled or error */ }
+  }, [load]);
+
+  function showImportToast(count: number): void {
+    if (importToastTimer.current !== null) clearTimeout(importToastTimer.current);
+    setImportToast(`${count} file${count !== 1 ? 's' : ''} imported`);
+    importToastTimer.current = setTimeout(() => setImportToast(''), 2500);
+  }
 
   // ------------------------------------------------------------------
   // Playback
@@ -198,14 +255,9 @@ export function LibraryScreen({ navigation }: Props): React.JSX.Element {
   const handlePlayPause = useCallback(
     (recording: Recording) => {
       if (activeId === recording.id) {
-        // Toggle current track
-        if (player.playing) {
-          player.pause();
-        } else {
-          player.play();
-        }
+        if (player.playing) player.pause();
+        else player.play();
       } else {
-        // Switch to new track
         setActiveId(recording.id);
         player.replace({ uri: recording.uri });
         player.play();
@@ -252,23 +304,38 @@ export function LibraryScreen({ navigation }: Props): React.JSX.Element {
   // Select mode
   // ------------------------------------------------------------------
 
-  const enterSelectMode = useCallback(() => {
-    setSelectMode(true);
-  }, []);
+  const enterSelectMode = useCallback(() => setSelectMode(true), []);
+  const exitSelectMode = useCallback(() => { setSelectMode(false); setSelected(new Set()); }, []);
 
-  const exitSelectMode = useCallback(() => {
-    setSelectMode(false);
-    setSelected(new Set());
-  }, []);
-
+  const handleDeleteSelected = useCallback(() => {
+    const count = selected.size;
+    Alert.alert(
+      `Delete ${count} recording${count !== 1 ? 's' : ''}`,
+      'This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            for (const id of selected) {
+              if (activeId === id) {
+                player.pause();
+                setActiveId(null);
+              }
+              await deleteRecording(id);
+            }
+            exitSelectMode();
+            await load();
+          },
+        },
+      ],
+    );
+  }, [activeId, exitSelectMode, load, player, selected]);
   const toggleSelected = useCallback((id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   }, []);
@@ -287,25 +354,11 @@ export function LibraryScreen({ navigation }: Props): React.JSX.Element {
         selected={selected.has(item.id)}
         onPlayPause={() => handlePlayPause(item)}
         onDelete={() => handleDelete(item)}
-        onLongPress={() => {
-          if (!selectMode) {
-            enterSelectMode();
-            toggleSelected(item.id);
-          }
-        }}
+        onLongPress={() => { if (!selectMode) { enterSelectMode(); toggleSelected(item.id); } }}
         onSelect={() => toggleSelected(item.id)}
       />
     ),
-    [
-      activeId,
-      enterSelectMode,
-      handleDelete,
-      handlePlayPause,
-      player.playing,
-      selectMode,
-      selected,
-      toggleSelected,
-    ],
+    [activeId, enterSelectMode, handleDelete, handlePlayPause, player.playing, selectMode, selected, toggleSelected],
   );
 
   const keyExtractor = useCallback((item: Recording) => item.id, []);
@@ -318,7 +371,7 @@ export function LibraryScreen({ navigation }: Props): React.JSX.Element {
   );
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
@@ -328,15 +381,38 @@ export function LibraryScreen({ navigation }: Props): React.JSX.Element {
               <Text style={styles.countChipText}>{recordings.length}</Text>
             </View>
           )}
+          <TouchableOpacity
+            style={styles.importBtn}
+            onPress={handleImport}
+            accessibilityLabel="Import audio files"
+            testID="import-btn"
+          >
+            <Ionicons name="folder-open-outline" size={20} color={Colors.accent} />
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={styles.selectButton}
-          onPress={selectMode ? exitSelectMode : enterSelectMode}
-          accessibilityLabel={selectMode ? 'Cancel selection' : 'Select recordings'}
-        >
-          <Text style={styles.selectButtonText}>{selectMode ? 'Cancel' : 'Select'}</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.wifiBtn}
+            onPress={() => navigation.navigate('QRScan', { mode: 'settings' })}
+            accessibilityLabel={isConnected ? 'Connected — tap to change' : 'Not connected — tap to pair'}
+            testID="wifi-btn"
+          >
+            <Ionicons
+              name={isConnected ? 'wifi' : 'wifi-outline'}
+              size={20}
+              color={Colors.textMuted}
+            />
+            <View style={[styles.dot, { backgroundColor: isConnected ? Colors.success : Colors.textMuted }]} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.selectButton}
+            onPress={selectMode ? exitSelectMode : enterSelectMode}
+            accessibilityLabel={selectMode ? 'Cancel selection' : 'Select recordings'}
+          >
+            <Text style={styles.selectButtonText}>{selectMode ? 'Cancel' : 'Select'}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* List */}
@@ -350,23 +426,35 @@ export function LibraryScreen({ navigation }: Props): React.JSX.Element {
         ItemSeparatorComponent={() => <View style={styles.separator} />}
       />
 
-      {/* Fixed CTA in select mode */}
+      {/* Select mode CTA */}
       {selectMode && selected.size > 0 && (
         <View style={styles.ctaContainer}>
-          <TouchableOpacity
-            style={styles.ctaButton}
-            onPress={() => {
-              navigation.navigate('SelectAndSend', {
-                recordingIds: Array.from(selected),
-              });
-            }}
-            accessibilityLabel={`Send ${selected.size} recording${selected.size !== 1 ? 's' : ''} to laptop`}
-          >
-            <Ionicons name="cloud-upload-outline" size={18} color={Colors.text} style={styles.ctaIcon} />
-            <Text style={styles.ctaText}>
-              {`Send ${selected.size} recording${selected.size !== 1 ? 's' : ''} to laptop`}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.ctaRow}>
+            <TouchableOpacity
+              style={[styles.ctaButton, { flex: 1 }]}
+              onPress={() => navigation.navigate('SelectAndSend', { recordingIds: Array.from(selected) })}
+              accessibilityLabel={`Send ${selected.size} recording${selected.size !== 1 ? 's' : ''} to laptop`}
+            >
+              <Ionicons name="cloud-upload-outline" size={18} color={Colors.text} style={styles.ctaIcon} />
+              <Text style={styles.ctaText}>
+                {`Send ${selected.size} recording${selected.size !== 1 ? 's' : ''}`}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.ctaDeleteButton}
+              onPress={handleDeleteSelected}
+              accessibilityLabel={`Delete ${selected.size} selected recordings`}
+            >
+              <Text style={styles.ctaDeleteText}>Delete {selected.size}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Import toast */}
+      {importToast.length > 0 && (
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>{importToast}</Text>
         </View>
       )}
     </SafeAreaView>
@@ -382,25 +470,18 @@ const CARD_V_PADDING = 14;
 const PLAY_BTN_SIZE = 44;
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
+  root: { flex: 1, backgroundColor: Colors.bg },
 
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: CARD_H_PADDING,
-    paddingTop: Platform.OS === 'android' ? 20 : 12,
+    paddingTop: Platform.OS === 'android' ? 12 : 8,
     paddingBottom: 12,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitle: {
     fontFamily: Typography.family.bold,
     fontSize: Typography.size.xl,
@@ -419,6 +500,23 @@ const styles = StyleSheet.create({
     fontSize: Typography.size.xs,
     color: Colors.textMuted,
   },
+  importBtn: {
+    padding: 4,
+  },
+  wifiBtn: {
+    padding: 4,
+    position: 'relative',
+  },
+  dot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: Colors.bg,
+  },
   selectButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -433,22 +531,10 @@ const styles = StyleSheet.create({
     color: Colors.accent,
   },
 
-  // List
-  listContent: {
-    paddingHorizontal: CARD_H_PADDING,
-    paddingBottom: 24,
-  },
-  listEmptyContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: CARD_H_PADDING,
-  },
-  separator: {
-    height: 8,
-  },
+  listContent: { paddingHorizontal: CARD_H_PADDING, paddingBottom: 24 },
+  listEmptyContent: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: CARD_H_PADDING },
+  separator: { height: 8 },
 
-  // Card
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -460,12 +546,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     gap: 12,
   },
-  cardActive: {
-    borderColor: Colors.accentDim,
-  },
-  cardSelected: {
-    borderColor: Colors.accent,
-  },
+  cardActive: { borderColor: Colors.accentDim },
+  cardSelected: { borderColor: Colors.accent },
   playButton: {
     width: PLAY_BTN_SIZE,
     height: PLAY_BTN_SIZE,
@@ -475,22 +557,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  cardMeta: {
-    flex: 1,
-    gap: 4,
-  },
-  cardDate: {
-    fontFamily: Typography.family.ui,
-    fontSize: Typography.size.base,
-    color: Colors.text,
-  },
-  cardStats: {
-    fontFamily: Typography.family.mono,
-    fontSize: Typography.size.sm,
-    color: Colors.textMuted,
-  },
+  cardMeta: { flex: 1, gap: 4 },
+  cardDate: { fontFamily: Typography.family.ui, fontSize: Typography.size.base, color: Colors.text },
+  cardStats: { fontFamily: Typography.family.mono, fontSize: Typography.size.sm, color: Colors.textMuted },
 
-  // Checkbox (select mode)
   checkbox: {
     width: 22,
     height: 22,
@@ -501,12 +571,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  checkboxSelected: {
-    backgroundColor: Colors.accent,
-    borderColor: Colors.accent,
-  },
+  checkboxSelected: { backgroundColor: Colors.accent, borderColor: Colors.accent },
 
-  // Swipe delete
   deleteAction: {
     backgroundColor: Colors.error,
     borderRadius: 12,
@@ -516,24 +582,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 4,
   },
-  deleteActionText: {
-    fontFamily: Typography.family.ui,
-    fontSize: Typography.size.xs,
-    color: Colors.text,
-  },
+  deleteActionText: { fontFamily: Typography.family.ui, fontSize: Typography.size.xs, color: Colors.text },
 
-  // Empty state
-  emptyState: {
-    alignItems: 'center',
-    gap: 12,
-  },
-  emptyText: {
-    fontFamily: Typography.family.ui,
-    fontSize: Typography.size.base,
-    color: Colors.textMuted,
-  },
+  emptyState: { alignItems: 'center', gap: 12 },
+  emptyText: { fontFamily: Typography.family.ui, fontSize: Typography.size.base, color: Colors.textMuted },
 
-  // CTA
   ctaContainer: {
     paddingHorizontal: CARD_H_PADDING,
     paddingBottom: Platform.OS === 'android' ? 16 : 24,
@@ -541,6 +594,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bg,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+  },
+  ctaRow: {
+    flexDirection: 'row',
+    gap: 10,
   },
   ctaButton: {
     flexDirection: 'row',
@@ -551,12 +608,33 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 8,
   },
-  ctaIcon: {
-    marginRight: 2,
+  ctaIcon: { marginRight: 2 },
+  ctaText: { fontFamily: Typography.family.bold, fontSize: Typography.size.base, color: Colors.text },
+  ctaDeleteButton: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: Colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  ctaText: {
+  ctaDeleteText: {
     fontFamily: Typography.family.bold,
     fontSize: Typography.size.base,
-    color: Colors.text,
+    color: Colors.error,
   },
+
+  toast: {
+    position: 'absolute',
+    bottom: 100,
+    alignSelf: 'center',
+    backgroundColor: Colors.bgElevated,
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  toastText: { color: Colors.text, fontSize: Typography.size.sm, fontFamily: Typography.family.ui },
 });

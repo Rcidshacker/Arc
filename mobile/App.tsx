@@ -6,9 +6,13 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
+import * as ExpoSplashScreen from 'expo-splash-screen';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFonts, Syne_400Regular, Syne_700Bold } from '@expo-google-fonts/syne';
 import { SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
+
+ExpoSplashScreen.preventAutoHideAsync();
 
 import { Colors } from './src/theme/colors';
 import { SplashScreen } from './src/screens/SplashScreen';
@@ -17,13 +21,15 @@ import { LibraryScreen } from './src/screens/LibraryScreen';
 import { SelectAndSendScreen } from './src/screens/SelectAndSendScreen';
 import { QRScanScreen } from './src/screens/QRScanScreen';
 import { UploadProgressScreen } from './src/screens/UploadProgressScreen';
+import { ProfileScreen } from './src/screens/ProfileScreen';
 
 export type RootStackParamList = {
   Splash: undefined;
   MainTabs: undefined;
   SelectAndSend: { recordingIds: string[] };
-  QRScan: undefined;
+  QRScan: { mode?: 'settings' | 'repairFromSend' | 'initial' } | undefined;
   UploadProgress: { recordingIds: string[]; serverUrl: string };
+  Profile: undefined;
 };
 
 export type MainTabParamList = {
@@ -87,15 +93,16 @@ export default function App(): React.JSX.Element {
   if (!fontsLoaded) {
     return (
       <View style={styles.loading}>
-        <StatusBar style="light" />
+        <StatusBar style="light" translucent={false} backgroundColor="#15161D" />
       </View>
     );
   }
 
   return (
     <GestureHandlerRootView style={Platform.OS === 'web' ? styles.webRoot : styles.nativeRoot}>
+      <SafeAreaProvider>
       <NavigationContainer theme={ArcNavTheme}>
-        <StatusBar style="light" />
+        <StatusBar style="light" translucent={false} backgroundColor="#15161D" />
         <Stack.Navigator
           initialRouteName="Splash"
           screenOptions={{ headerShown: false, animationEnabled: true }}
@@ -117,8 +124,14 @@ export default function App(): React.JSX.Element {
             component={UploadProgressScreen}
             options={{ presentation: 'modal' }}
           />
+          <Stack.Screen
+            name="Profile"
+            component={ProfileScreen}
+            options={{ presentation: 'modal' }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
