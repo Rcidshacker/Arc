@@ -69,3 +69,6 @@ PLAYWRIGHT_TEST_RESULTS.md
 
 # Claude internal skill docs
 docs/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
